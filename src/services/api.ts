@@ -13,32 +13,41 @@ import { SalaryStatus } from '@/types';
 
 // Dynamically determine API base URL based on current host
 const getApiBaseUrl = (): string => {
+  // Always prioritize the environment variable if set
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // Fallback logic for local development
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
     
-    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      const apiUrl = `${protocol}//${hostname}:3001/api`;
-      return apiUrl;
+    // Local development
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `${protocol}//${hostname}:3001/api`;
     }
     
-    if (import.meta.env.VITE_API_BASE_URL) {
-      const envUrl = import.meta.env.VITE_API_BASE_URL;
-      if (!envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
-        return envUrl;
-      }
-    }
-    
-    return `${protocol}//${hostname}:3000/api`;
+    // Production fallback (should not reach here if VITE_API_BASE_URL is set)
+    return `${protocol}//${hostname}:3001/api`;
   }
   
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
+  // Server-side fallback
   return 'http://localhost:3001/api';
 };
 
 const API_KEY = import.meta.env.VITE_API_KEY || 'your-api-key';
+
+// Log API configuration on module load (for debugging)
+if (typeof window !== 'undefined') {
+  const apiUrl = getApiBaseUrl();
+  console.log('[API Config]', {
+    baseURL: apiUrl,
+    apiKey: API_KEY ? '***set***' : 'not set',
+    env: import.meta.env.MODE,
+    viteApiBaseUrl: import.meta.env.VITE_API_BASE_URL,
+  });
+}
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
@@ -47,7 +56,8 @@ const apiClient: AxiosInstance = axios.create({
     'Content-Type': 'application/json',
     'x-api-key': API_KEY,
   },
-  timeout: 30000,
+  timeout: 60000, // Increased to 60 seconds for slower networks
+  withCredentials: false, // Don't send cookies to avoid CORS issues
 });
 
 // Request interceptor - add JWT token if available
@@ -55,6 +65,11 @@ apiClient.interceptors.request.use(
   (config) => {
     const currentApiUrl = getApiBaseUrl();
     config.baseURL = currentApiUrl;
+    
+    // Log API URL for debugging (only in development)
+    if (import.meta.env.DEV) {
+      console.log('[API] Making request to:', currentApiUrl + (config.url || ''));
+    }
     
     // Add JWT token if available (for employee portal)
     const token = localStorage.getItem('token');
@@ -75,6 +90,29 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error: AxiosError) => {
+    // Log detailed error information
+    if (error.code === 'ECONNABORTED' || error.message.includes('aborted')) {
+      console.error('[API Error] Request aborted - timeout or network issue', {
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        timeout: error.config?.timeout,
+      });
+    } else if (error.code === 'ERR_NETWORK' || !error.response) {
+      console.error('[API Error] Network error - unable to reach server', {
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        message: error.message,
+      });
+    } else {
+      console.error('[API Error]', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+      });
+    }
+    
     if (error.response?.status === 401) {
       // Only redirect to login if we're not on an admin route
       // Admin routes use API key authentication, not JWT tokens
@@ -87,7 +125,6 @@ apiClient.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    console.error('[API Error]', error.response?.data || error.message);
     return Promise.reject(error);
   }
 );

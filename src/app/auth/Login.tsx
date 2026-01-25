@@ -35,7 +35,20 @@ const Login: React.FC = () => {
       setOtpSent(true);
       setStep('otp');
     } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to send OTP. Please try again.');
+      console.error('[Login] Send OTP error:', err);
+      let errorMessage = 'Failed to send OTP. Please try again.';
+      
+      if (err?.code === 'ECONNABORTED' || err?.message?.includes('aborted')) {
+        errorMessage = 'Request timed out. Please check your connection and try again.';
+      } else if (err?.code === 'ERR_NETWORK' || !err?.response) {
+        errorMessage = 'Unable to connect to server. Please check your connection.';
+      } else if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setSendingOTP(false);
     }
@@ -74,7 +87,20 @@ const Login: React.FC = () => {
         setLoading(false);
       }
     } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Invalid OTP. Please try again.');
+      console.error('[Login] Verify OTP error:', err);
+      let errorMessage = 'Invalid OTP. Please try again.';
+      
+      if (err?.code === 'ECONNABORTED' || err?.message?.includes('aborted')) {
+        errorMessage = 'Request timed out. Please check your connection and try again.';
+      } else if (err?.code === 'ERR_NETWORK' || !err?.response) {
+        errorMessage = 'Unable to connect to server. Please check your connection.';
+      } else if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
       setLoading(false);
     }
   };
