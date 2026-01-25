@@ -12,7 +12,7 @@ import type {
 import { SalaryStatus } from '@/types';
 
 // Dynamically determine API base URL based on current host
-const getApiBaseUrl = (): string => {
+export const getApiBaseUrl = (): string => {
   // Always prioritize the environment variable if set
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
@@ -173,30 +173,68 @@ const employeeApi = {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
     
-    const response = await fetch(`${getApiBaseUrl()}/employee/salary/pdf?month=${month}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
+    const apiUrl = getApiBaseUrl();
+    const fullUrl = `${apiUrl}/employee/salary/pdf?month=${month}`;
     
-    if (response.status === 401) {
-      localStorage.clear();
-      window.location.href = '/login';
-      throw new Error('Unauthorized');
+    try {
+      const response = await fetch(fullUrl, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        method: 'GET',
+      });
+      
+      if (response.status === 401) {
+        localStorage.clear();
+        window.location.href = '/login';
+        throw new Error('Unauthorized');
+      }
+      
+      if (!response.ok) {
+        // Try to parse error response
+        const contentType = response.headers.get('Content-Type');
+        if (contentType && contentType.includes('application/json')) {
+          const error = await response.json().catch(() => ({ error: 'Failed to download' }));
+          throw new Error(error.message || error.error || 'Failed to download payslip');
+        } else {
+          throw new Error(`Failed to download payslip: ${response.status} ${response.statusText}`);
+        }
+      }
+      
+      const blob = await response.blob();
+      
+      // Check if blob is actually a PDF (not an error response)
+      if (blob.type && !blob.type.includes('pdf') && blob.size < 100) {
+        // Might be an error response, try to parse as text
+        const text = await blob.text();
+        try {
+          const error = JSON.parse(text);
+          throw new Error(error.message || error.error || 'Failed to download payslip');
+        } catch {
+          throw new Error('Invalid response from server');
+        }
+      }
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payslip-${month}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error: any) {
+      // Handle network errors
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.error('[downloadPayslip] Network error:', {
+          url: fullUrl,
+          error: error.message,
+        });
+        throw new Error('Network error: Unable to connect to server. Please check your connection and try again.');
+      }
+      throw error;
     }
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to download' }));
-      throw new Error(error.message || 'Failed to download payslip');
-    }
-    
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `payslip-${month}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
   },
   
   // Attendance

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
-import { getSalaryHistory, downloadPayslip } from '@/services/api';
+import { getSalaryHistory, downloadPayslip, getApiBaseUrl } from '@/services/api';
 import { SalaryRecord, SalaryStatus } from '@/types';
 import { Download, FileText, AlertCircle, Eye, X } from 'lucide-react';
 
@@ -14,33 +14,6 @@ const SalaryHistory: React.FC = () => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
-
-  // Helper function to get API base URL
-  const getApiBaseUrl = (): string => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const protocol = window.location.protocol;
-      
-      if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        const apiUrl = `${protocol}//${hostname}:3001/api`;
-        return apiUrl;
-      }
-      
-      if (import.meta.env.VITE_API_BASE_URL) {
-        const envUrl = import.meta.env.VITE_API_BASE_URL;
-        if (!envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
-          return envUrl;
-        }
-      }
-      
-      return `${protocol}//${hostname}:3001/api`;
-    }
-    
-    if (import.meta.env.VITE_API_BASE_URL) {
-      return import.meta.env.VITE_API_BASE_URL;
-    }
-    return 'http://localhost:3000/api';
-  };
 
   // Helper to extract month in YYYY-MM format
   const getMonthFromRecord = (record: SalaryRecord): string => {
@@ -70,8 +43,17 @@ const SalaryHistory: React.FC = () => {
         throw new Error('Not authenticated');
       }
 
-      const response = await fetch(`${getApiBaseUrl()}/employee/salary/pdf?month=${month}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const apiUrl = getApiBaseUrl();
+      const fullUrl = `${apiUrl}/employee/salary/pdf?month=${month}`;
+      
+      console.log('[SalaryHistory] Fetching PDF from:', fullUrl);
+
+      const response = await fetch(fullUrl, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        method: 'GET',
       });
 
       if (response.status === 401) {
@@ -100,6 +82,19 @@ const SalaryHistory: React.FC = () => {
 
       // Response is PDF - create blob URL
       const blob = await response.blob();
+      
+      // Check if blob is actually a PDF (not an error response)
+      if (blob.type && !blob.type.includes('pdf') && blob.size < 100) {
+        // Might be an error response, try to parse as text
+        const text = await blob.text();
+        try {
+          const error = JSON.parse(text);
+          throw new Error(error.message || error.error || 'Failed to load payslip');
+        } catch {
+          throw new Error('Invalid response from server');
+        }
+      }
+      
       const url = URL.createObjectURL(blob);
       
       // Revoke previous URL if exists
@@ -110,7 +105,18 @@ const SalaryHistory: React.FC = () => {
       setPdfUrl(url);
     } catch (err) {
       console.error('Failed to load payslip:', err);
-      setPdfError(err instanceof Error ? err.message : 'Failed to load payslip');
+      
+      // Handle network errors with better messages
+      let errorMessage = 'Failed to load payslip';
+      if (err instanceof Error) {
+        if (err.name === 'TypeError' && err.message.includes('fetch')) {
+          errorMessage = 'Network error: Unable to connect to server. Please check your connection and try again.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setPdfError(errorMessage);
       setPdfUrl(null);
     } finally {
       setLoadingPdf(false);
