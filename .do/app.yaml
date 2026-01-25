@@ -1,0 +1,27 @@
+name: payroll-frontend
+region: nyc
+services:
+  - name: web
+    github:
+      repo: eecglobaldev/hr-frontend
+      branch: main
+      deploy_on_push: true
+    build_command: npm ci && npm run build
+    run_command: npm start
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8080
+    routes:
+      - path: /
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+        scope: RUN_TIME
+      # IMPORTANT: Set VITE_API_BASE_URL to your backend API URL
+      # This is embedded at build time, so update it before deploying
+      - key: VITE_API_BASE_URL
+        value: "https://hr-backend-q76cs.ondigitalocean.app/api"
+        scope: BUILD_TIME
