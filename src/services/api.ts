@@ -144,11 +144,20 @@ const adminApi = {
 // Employee Self-Service APIs
 const employeeApi = {
   // Auth
+  checkAuthMethod: (employeeCode: string) =>
+    apiClient.post<ApiResponse<{ hasPassword: boolean; requiresOTP: boolean; isLocked: boolean; lockedUntil: string | null; attemptsRemaining: number; message: string }>>('/auth/employee/check-method', { employeeCode }),
+  
   sendOTP: (employeeCode: string) =>
     apiClient.post<ApiResponse<void>>('/auth/employee/send-otp', { employeeCode }),
   
   verifyOTP: (employeeCode: string, otp: string) =>
-    apiClient.post<ApiResponse<{ token: string; employeeCode: string; role: string }>>('/auth/employee/verify-otp', { employeeCode, otp }),
+    apiClient.post<ApiResponse<{ token?: string; employeeCode: string; role?: string; requiresPasswordSetup?: boolean; message?: string }>>('/auth/employee/verify-otp', { employeeCode, otp }),
+  
+  loginWithPassword: (employeeCode: string, password: string) =>
+    apiClient.post<ApiResponse<{ token: string; employeeCode: string; role: string }>>('/auth/employee/login-password', { employeeCode, password }),
+  
+  setPassword: (employeeCode: string, otp: string, password: string) =>
+    apiClient.post<ApiResponse<{ token: string; employeeCode: string; role: string }>>('/auth/employee/set-password', { employeeCode, otp, password }),
   
   resendOTP: (employeeCode: string) =>
     apiClient.post<ApiResponse<void>>('/auth/employee/resend-otp', { employeeCode }),
