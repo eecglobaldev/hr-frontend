@@ -6,7 +6,7 @@ import Button from '@/components/ui/Button';
 import { ShieldCheck, ArrowRight, Mail, RefreshCw, Lock, Eye, EyeOff } from 'lucide-react';
 import { validatePasswordStrength, getPasswordStrength } from '@/utils/password';
 
-type LoginStep = 'employeeCode' | 'password' | 'otp' | 'setPassword';
+type LoginStep = 'employeeCode' | 'password' | 'otp' | 'setPassword' | 'resetPassword';
 
 const Login: React.FC = () => {
   const [step, setStep] = useState<LoginStep>('employeeCode');
@@ -27,7 +27,7 @@ const Login: React.FC = () => {
   const [lockedUntil, setLockedUntil] = useState<string | null>(null);
   const [attemptsRemaining, setAttemptsRemaining] = useState(5);
   
-  const { checkAuthMethod, loginWithPassword, setPasswordAfterOTP, verifyOTPAndLogin, isAuthenticated, role } = useAuth();
+  const { checkAuthMethod, loginWithPassword, setPasswordAfterOTP, resetPasswordAfterOTP, verifyOTPAndLogin, isAuthenticated, role } = useAuth();
   const navigate = useNavigate();
 
   if (isAuthenticated) {
@@ -220,6 +220,67 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    // Validate OTP
+    if (!otp || otp.length !== 6) {
+      setError('Please enter a valid 6-digit OTP');
+      return;
+    }
+
+    // Validate password match
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    // Validate password strength
+    const validation = validatePasswordStrength(password);
+    if (!validation.valid) {
+      setError(`Password does not meet requirements: ${validation.errors.join(', ')}`);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Use resetPasswordAfterOTP for password reset
+      // This will call the resetPassword endpoint which verifies OTP internally
+      const result = await resetPasswordAfterOTP(employeeCode, otp, password);
+      
+      if (result.success && result.role) {
+        // Password reset successfully and user is logged in
+        const redirectPath = result.role === 'admin' ? '/admin/dashboard' : '/employee/attendance';
+        window.location.href = redirectPath;
+      } else {
+        setError(result.error || 'Failed to reset password. Please try again.');
+        setLoading(false);
+      }
+    } catch (err: any) {
+      console.error('[Login] Reset password error:', err);
+      let errorMessage = 'Failed to reset password. Please try again.';
+      
+      if (err?.code === 'ECONNABORTED' || err?.message?.includes('aborted')) {
+        errorMessage = 'Request timed out. Please check your connection and try again.';
+      } else if (err?.code === 'ERR_NETWORK' || !err?.response) {
+        errorMessage = 'Unable to connect to server. Please check your connection.';
+      } else if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+        const errors = err.response.data.errors;
+        if (errors && Array.isArray(errors)) {
+          errorMessage = errors.join(', ');
+        }
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      setLoading(false);
+    }
+  };
+
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -284,6 +345,7 @@ const Login: React.FC = () => {
     setIsLocked(false);
     setLockedUntil(null);
     setAttemptsRemaining(5);
+    setPasswordStrength('weak');
   };
 
   const handlePasswordChange = (value: string) => {
@@ -427,6 +489,27 @@ const Login: React.FC = () => {
                     </span>
                   )}
                 </Button>
+                
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setError('');
+                    setPassword('');
+                    setOtp('');
+                    setConfirmPassword('');
+                    // Send OTP for password reset
+                    try {
+                      await handleSendOTP();
+                      // After OTP is sent, switch to reset password step
+                      setStep('resetPassword');
+                    } catch (err) {
+                      // Error already handled in handleSendOTP
+                    }
+                  }}
+                  className="w-full text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors text-center"
+                >
+                  Forgot Password? Reset via OTP
+                </button>
               </div>
             </form>
           ) : step === 'otp' ? (
@@ -615,6 +698,169 @@ const Login: React.FC = () => {
                   ) : (
                     <span className="flex items-center">
                       Set Password <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={18} />
+                    </span>
+                  )}
+                </Button>
+              </div>
+            </form>
+          ) : step === 'resetPassword' ? (
+            <form onSubmit={handleResetPassword} className="space-y-8">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2 text-sm text-slate-600">
+                    <Lock size={16} />
+                    <span className="font-semibold">Reset Your Password</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('password');
+                      setError('');
+                      setOtp('');
+                      setPassword('');
+                      setConfirmPassword('');
+                    }}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+                  >
+                    Back to Login
+                  </button>
+                </div>
+
+                <div className="group space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Enter OTP</label>
+                  <input
+                    type="text"
+                    placeholder="000000"
+                    maxLength={6}
+                    pattern="[0-9]{6}"
+                    className="w-full bg-white/50 border border-slate-200 rounded-2xl px-5 py-4 focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all font-bold text-slate-700 placeholder:text-slate-300 text-center text-2xl tracking-widest"
+                    value={otp}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                      setOtp(value);
+                    }}
+                    onKeyDown={(e) => {
+                      // Prevent form submission when pressing Enter on OTP field
+                      if (e.key === 'Enter' && (!password || !confirmPassword)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    required
+                    autoFocus
+                  />
+                  <p className="text-[10px] text-slate-400 text-center mt-2">
+                    Enter the 6-digit OTP sent to your registered mobile number
+                  </p>
+                </div>
+
+                <div className="group space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">New Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter new password"
+                      className="w-full bg-white/50 border border-slate-200 rounded-2xl px-5 py-4 pr-12 focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all font-bold text-slate-700 placeholder:text-slate-300"
+                      value={password}
+                      onChange={(e) => handlePasswordChange(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                  {password && (
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <div className={`h-1 flex-1 rounded-full ${getPasswordStrengthColor(passwordStrength)}`}></div>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">{passwordStrength}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Must be at least 8 characters with uppercase, lowercase, and number
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="group space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Confirm Password</label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      placeholder="Confirm new password"
+                      className="w-full bg-white/50 border border-slate-200 rounded-2xl px-5 py-4 pr-12 focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all font-bold text-slate-700 placeholder:text-slate-300"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                  {confirmPassword && password !== confirmPassword && (
+                    <p className="text-[10px] text-rose-500">Passwords do not match</p>
+                  )}
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-4 bg-rose-50 text-rose-600 text-xs rounded-2xl border border-rose-100 text-center font-bold">
+                  {error}
+                </div>
+              )}
+
+              {otpSent && !error && (
+                <div className="p-4 bg-green-50 text-green-600 text-xs rounded-2xl border border-green-100 text-center font-bold">
+                  OTP sent successfully!
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <Button 
+                  type="submit" 
+                  fullWidth 
+                  size="lg" 
+                  disabled={loading || !otp || otp.length !== 6 || !password || !confirmPassword || password !== confirmPassword || passwordStrength === 'weak'} 
+                  className="group"
+                >
+                  {loading ? (
+                    <span className="flex items-center">
+                      <RefreshCw className="mr-2 animate-spin" size={18} />
+                      Resetting Password...
+                    </span>
+                  ) : (
+                    <span className="flex items-center">
+                      Reset Password <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={18} />
+                    </span>
+                  )}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fullWidth
+                  size="md"
+                  onClick={handleResendOTP}
+                  disabled={resendingOTP}
+                >
+                  {resendingOTP ? (
+                    <span className="flex items-center">
+                      <RefreshCw className="mr-2 animate-spin" size={16} />
+                      Resending...
+                    </span>
+                  ) : (
+                    <span className="flex items-center">
+                      <RefreshCw className="mr-2" size={16} />
+                      Resend OTP
                     </span>
                   )}
                 </Button>

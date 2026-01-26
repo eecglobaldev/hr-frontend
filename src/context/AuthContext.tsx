@@ -17,6 +17,7 @@ interface AuthContextType {
   verifyOTPAndLogin: (employeeCode: string, otp: string) => Promise<{ success: boolean; role?: string }>;
   loginWithPassword: (employeeCode: string, password: string) => Promise<{ success: boolean; error?: string; attemptsRemaining?: number; lockedUntil?: string | null }>;
   setPasswordAfterOTP: (employeeCode: string, otp: string, password: string) => Promise<{ success: boolean; error?: string; role?: string }>;
+  resetPasswordAfterOTP: (employeeCode: string, otp: string, password: string) => Promise<{ success: boolean; error?: string; role?: string }>;
   adminLogin: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isLoading: boolean;
@@ -166,6 +167,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error: errorMessage,
         attemptsRemaining: errorData?.data?.attemptsRemaining,
         lockedUntil: errorData?.data?.lockedUntil || errorData?.lockedUntil,
+      };
+    }
+  };
+
+  const resetPasswordAfterOTP = async (employeeCode: string, otp: string, password: string): Promise<{ success: boolean; error?: string; role?: string }> => {
+    try {
+      const response = await api.employee.resetPassword(employeeCode, otp, password);
+      const responseData = response.data?.data;
+      
+      if (responseData && response.data?.success) {
+        const { token, employeeCode: code, role: userRole } = responseData;
+        
+        if (!token || !code || !userRole) {
+          console.error('[AuthContext] Invalid reset password response data:', responseData);
+          return { success: false, error: 'Invalid response from server' };
+        }
+        
+        const normalizedRole = userRole.toLowerCase();
+        
+        localStorage.setItem('token', token);
+        localStorage.setItem('employeeCode', code);
+        localStorage.setItem('role', normalizedRole);
+        
+        setToken(token);
+        setEmployeeCode(code);
+        setRole(normalizedRole);
+        
+        // Fetch user profile
+        try {
+          const profileResponse = await api.employee.getProfile();
+          const profileData = profileResponse.data?.data;
+          if (profileData) {
+            setUser(profileData);
+            localStorage.setItem('user', JSON.stringify(profileData));
+          }
+        } catch (error) {
+          console.error('[AuthContext] Failed to fetch user profile:', error);
+        }
+        
+        return { success: true, role: normalizedRole };
+      }
+      
+      return { success: false, error: 'Failed to reset password' };
+    } catch (error: any) {
+      console.error('[AuthContext] Reset password failed:', error);
+      const errorData = error?.response?.data;
+      const errorMessage = errorData?.error || errorData?.message || error?.message || 'Failed to reset password. Please try again.';
+      const errors = errorData?.errors || [];
+      
+      return {
+        success: false,
+        error: errors.length > 0 ? errors.join(', ') : errorMessage,
       };
     }
   };
@@ -354,6 +407,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         verifyOTPAndLogin,
         loginWithPassword,
         setPasswordAfterOTP,
+        resetPasswordAfterOTP,
         adminLogin,
         logout, 
         isLoading 

@@ -159,6 +159,9 @@ const employeeApi = {
   setPassword: (employeeCode: string, otp: string, password: string) =>
     apiClient.post<ApiResponse<{ token: string; employeeCode: string; role: string }>>('/auth/employee/set-password', { employeeCode, otp, password }),
   
+  resetPassword: (employeeCode: string, otp: string, password: string) =>
+    apiClient.post<ApiResponse<{ token: string; employeeCode: string; role: string }>>('/auth/employee/reset-password', { employeeCode, otp, password }),
+  
   resendOTP: (employeeCode: string) =>
     apiClient.post<ApiResponse<void>>('/auth/employee/resend-otp', { employeeCode }),
   
