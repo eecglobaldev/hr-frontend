@@ -248,6 +248,74 @@ const employeeApi = {
       throw error;
     }
   },
+
+  downloadPayslipPdf: async (month: string): Promise<void> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const apiUrl = getApiBaseUrl();
+    const fullUrl = `${apiUrl}/employee/salary/payslip?month=${month}`;
+    
+    try {
+      const response = await fetch(fullUrl, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        method: 'GET',
+      });
+      
+      if (response.status === 401) {
+        localStorage.clear();
+        window.location.href = '/login';
+        throw new Error('Unauthorized');
+      }
+      
+      if (!response.ok) {
+        // Try to parse error response
+        const contentType = response.headers.get('Content-Type');
+        if (contentType && contentType.includes('application/json')) {
+          const error = await response.json().catch(() => ({ error: 'Failed to download' }));
+          throw new Error(error.message || error.error || 'Failed to download payslip');
+        } else {
+          throw new Error(`Failed to download payslip: ${response.status} ${response.statusText}`);
+        }
+      }
+      
+      const blob = await response.blob();
+      
+      // Check if blob is actually a PDF (not an error response)
+      if (blob.type && !blob.type.includes('pdf') && blob.size < 100) {
+        // Might be an error response, try to parse as text
+        const text = await blob.text();
+        try {
+          const error = JSON.parse(text);
+          throw new Error(error.message || error.error || 'Failed to download payslip');
+        } catch {
+          throw new Error('Invalid response from server');
+        }
+      }
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payslip-${month}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error: any) {
+      // Handle network errors
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.error('[downloadPayslipPdf] Network error:', {
+          url: fullUrl,
+          error: error.message,
+        });
+        throw new Error('Network error: Unable to connect to server. Please check your connection and try again.');
+      }
+      throw error;
+    }
+  },
   
   // Attendance
   getAttendance: (month?: string) => {
@@ -547,6 +615,7 @@ export const getSalaryHistory = async (): Promise<SalaryRecord[]> => {
 };
 
 export const downloadPayslip = (month: string) => api.employee.downloadPayslip(month);
+export const downloadPayslipPdf = (month: string) => api.employee.downloadPayslipPdf(month);
 
 export const getAttendanceData = async (month?: string): Promise<{ summary: any; dailyBreakdown: AttendanceRecord[] }> => {
   const response = await api.employee.getAttendance(month);

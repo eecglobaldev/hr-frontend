@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000, // Changed from 5173 (Vite default) to 3000
+    port: 3001, // Changed from 5173 (Vite default) to 3000
     host: true,
     proxy: {
       '/api': {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
-import { getSalaryHistory, downloadPayslip, getApiBaseUrl } from '@/services/api';
+import { getSalaryHistory, downloadPayslip, downloadPayslipPdf, getApiBaseUrl } from '@/services/api';
 import { SalaryRecord, SalaryStatus } from '@/types';
 import { Download, FileText, AlertCircle, Eye, X } from 'lucide-react';
 
@@ -10,6 +10,7 @@ const SalaryHistory: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadingPayslip, setDownloadingPayslip] = useState<string | null>(null);
   const [viewingRecord, setViewingRecord] = useState<SalaryRecord | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
@@ -208,6 +209,26 @@ const SalaryHistory: React.FC = () => {
     }
   };
 
+  const handleDownloadPayslip = async (record: SalaryRecord) => {
+    // Check if salary is on HOLD - show message but don't block UI
+    if (record.status === SalaryStatus.HOLD) {
+      alert('Salary is on HOLD. Please contact HR for more information.');
+      return;
+    }
+
+    try {
+      setDownloadingPayslip(record.id);
+      const month = getMonthFromRecord(record);
+      await downloadPayslipPdf(month);
+    } catch (err) {
+      console.error('Failed to download payslip:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to download payslip';
+      alert(errorMessage);
+    } finally {
+      setDownloadingPayslip(null);
+    }
+  };
+
   return (
     <div className="space-y-10 max-w-7xl mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
@@ -248,6 +269,7 @@ const SalaryHistory: React.FC = () => {
                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Net Realized</th>
                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">State</th>
                 <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Report</th>
+                <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Payslip</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -263,7 +285,7 @@ const SalaryHistory: React.FC = () => {
                 ))
               ) : history.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-10 py-12 text-center">
+                  <td colSpan={6} className="px-10 py-12 text-center">
                     <p className="text-slate-400 font-semibold">No salary records found</p>
                   </td>
                 </tr>
@@ -315,6 +337,22 @@ const SalaryHistory: React.FC = () => {
                           {downloading === record.id ? 'Downloading...' : 'Download'}
                         </button>
                       </div>
+                    </td>
+                    <td className="px-10 py-8">
+                      <button
+                        onClick={() => handleDownloadPayslip(record)}
+                        disabled={record.status === SalaryStatus.HOLD || downloadingPayslip === record.id}
+                        className={`inline-flex items-center text-xs font-black uppercase tracking-widest transition-all ${
+                          record.status === SalaryStatus.HOLD 
+                            ? 'text-slate-300 cursor-not-allowed' 
+                            : downloadingPayslip === record.id
+                            ? 'text-slate-400 cursor-wait'
+                            : 'text-indigo-500 hover:text-indigo-700 hover:scale-105'
+                        }`}
+                      >
+                        <Download size={16} className="mr-2" />
+                        {downloadingPayslip === record.id ? 'Downloading...' : 'Download'}
+                      </button>
                     </td>
                   </tr>
                 ))
