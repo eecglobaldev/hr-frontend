@@ -1,5 +1,6 @@
-import { Menu, RefreshCw } from 'lucide-react';
+import { Menu, RefreshCw, LogOut } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import { api } from '@/services/api';
 
 interface HeaderProps {
@@ -8,6 +9,7 @@ interface HeaderProps {
 
 export default function Header({ onMenuClick }: HeaderProps) {
   const [isReloading, setIsReloading] = useState(false);
+  const { logout } = useAuth();
 
   const handleReload = async () => {
     setIsReloading(true);
@@ -47,6 +49,17 @@ export default function Header({ onMenuClick }: HeaderProps) {
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isReloading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
             <span>Reload Systems</span>
+          </button>
+          
+          <div className="h-8 w-[1px] bg-white/10" />
+
+          <button
+            onClick={logout}
+            className="group flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-rose-300 transition-all rounded-lg hover:bg-white/5"
+            title="Log out and go to employee login"
+          >
+            <LogOut className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
+            <span>Log out</span>
           </button>
           
           <div className="h-8 w-[1px] bg-white/10" />

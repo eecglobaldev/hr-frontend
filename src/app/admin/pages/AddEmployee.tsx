@@ -87,7 +87,7 @@ export default function AddEmployee() {
       if (response.data.success) {
         setSuccess(true);
         setTimeout(() => {
-          navigate('/employees');
+          navigate('/admin/employees');
         }, 2000);
       }
     } catch (err: any) {
@@ -119,7 +119,7 @@ export default function AddEmployee() {
     <div className="space-y-10">
       {/* Back Button */}
       <button
-        onClick={() => navigate('/employees')}
+        onClick={() => navigate('/admin/employees')}
         className="group flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-white transition-all uppercase tracking-widest animate-fade-in"
       >
         <div className="p-2 rounded-lg bg-white/[0.03] group-hover:bg-indigo-600 transition-colors">

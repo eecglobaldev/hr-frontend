@@ -140,7 +140,7 @@ export default function Employees() {
       console.warn('Cannot view employee: employeeNo is empty');
       return;
     }
-    navigate(`/employees/${employeeNo}`);
+    navigate(`/admin/employees/${employeeNo}`);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
