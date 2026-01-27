@@ -617,10 +617,17 @@ export const getSalaryHistory = async (): Promise<SalaryRecord[]> => {
 export const downloadPayslip = (month: string) => api.employee.downloadPayslip(month);
 export const downloadPayslipPdf = (month: string) => api.employee.downloadPayslipPdf(month);
 
-export const getAttendanceData = async (month?: string): Promise<{ summary: any; dailyBreakdown: AttendanceRecord[] }> => {
+export type AttendanceData = {
+  summary: any;
+  dailyBreakdown: AttendanceRecord[];
+  after25Breakdown?: AttendanceRecord[];
+  after25Summary?: any;
+};
+
+export const getAttendanceData = async (month?: string): Promise<AttendanceData> => {
   const response = await api.employee.getAttendance(month);
   if (response.data?.data) {
-    return response.data.data;
+    return response.data.data as AttendanceData;
   }
   return {
     summary: {

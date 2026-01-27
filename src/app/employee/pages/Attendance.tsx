@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
-import { getAttendanceData } from '@/services/api';
+import { getAttendanceData, type AttendanceData } from '@/services/api';
 import { AttendanceRecord, AttendanceStatus } from '@/types';
 import { AlertCircle } from 'lucide-react';
 
 const Attendance: React.FC = () => {
-  const [attendanceData, setAttendanceData] = useState<{ summary: any; dailyBreakdown: AttendanceRecord[] } | null>(null);
+  const [attendanceData, setAttendanceData] = useState<AttendanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(
@@ -341,6 +341,96 @@ const Attendance: React.FC = () => {
               </table>
             </div>
           </Card>
+
+          {/* After 25th (current period) – shown only when viewing current month and API returns after25Breakdown */}
+          {attendanceData?.after25Breakdown && attendanceData.after25Breakdown.length > 0 && (
+            <>
+              <div className="flex items-center gap-4 py-6" aria-hidden="true">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-xs font-black text-slate-400 uppercase tracking-widest px-4">After 25th (current period)</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+              <Card title="After 25th (current period)" className="!px-0 !py-0 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-white/40 backdrop-blur-md border-b border-slate-100">
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Timestamp</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">First In</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Last Out</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Duration</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Status</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Flags</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Leave/Regularization</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {attendanceData.after25Breakdown.map((day) => (
+                        <tr key={day.date} className="hover:bg-indigo-50/30 transition-all group">
+                          <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-900 font-bold">
+                            {formatDate(day.date)}
+                          </td>
+                          <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                            {formatTime(day.firstEntry)}
+                          </td>
+                          <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                            {formatTime(day.lastExit)}
+                          </td>
+                          <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-900 font-bold">
+                            {day.totalHours && day.totalHours > 0 ? formatHours(day.totalHours) : '—'}
+                          </td>
+                          <td className="px-8 py-5 whitespace-nowrap">
+                            {getStatusBadge(day.status)}
+                          </td>
+                          <td className="px-8 py-5 whitespace-nowrap">
+                            <div className="flex flex-wrap gap-2">
+                              {day.isLate && (
+                                <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 text-[9px] font-black uppercase tracking-widest border border-rose-500/20">
+                                  {day.minutesLate ? `Late (${day.minutesLate}m)` : 'Late'}
+                                </span>
+                              )}
+                              {day.isEarlyExit && (
+                                <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 text-[9px] font-black uppercase tracking-widest border border-amber-500/20">
+                                  Early Exit
+                                </span>
+                              )}
+                              {!day.isLate && !day.isEarlyExit && (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-8 py-5 whitespace-nowrap">
+                            <div className="flex flex-wrap gap-2">
+                              {day.isPaidLeave && (
+                                <span className="px-3 py-1 rounded-lg bg-blue-500/15 text-blue-700 text-xs font-black uppercase tracking-wider border border-blue-500/30 shadow-sm">
+                                  Paid Leave (PL)
+                                </span>
+                              )}
+                              {day.isCasualLeave && (
+                                <span className="px-3 py-1 rounded-lg bg-purple-500/15 text-purple-700 text-xs font-black uppercase tracking-wider border border-purple-500/30 shadow-sm">
+                                  Casual Leave (CL)
+                                </span>
+                              )}
+                              {day.isRegularized && (
+                                <span className="px-3 py-1 rounded-lg bg-green-500/15 text-green-700 text-xs font-black uppercase tracking-wider border border-green-500/30 shadow-sm">
+                                  {day.regularizationOriginalStatus 
+                                    ? `Regularized (${day.regularizationOriginalStatus.toUpperCase()})`
+                                    : 'Regularized'}
+                                </span>
+                              )}
+                              {!day.isPaidLeave && !day.isCasualLeave && !day.isRegularized && (
+                                <span className="text-slate-400 text-xs font-semibold">—</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
+          )}
         </>
       ) : null}
     </div>
