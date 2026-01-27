@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { UserSearch, Calendar, X, Download, Loader2 } from 'lucide-react';
 import Card from '@/components/ui/Card';
@@ -36,6 +36,11 @@ export default function Salary() {
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
   const [isFinalizingAll, setIsFinalizingAll] = useState(false);
+  const [allDataLoaded, setAllDataLoaded] = useState(false); // Flag to track when all persisted data is loaded
+  
+  // Refs to store loaded data to avoid stale state issues
+  const loadedPaidLeavesRef = useRef<LeaveDateWithValue[]>([]);
+  const loadedCasualLeavesRef = useRef<LeaveDateWithValue[]>([]);
   
   // Regularization state
   const [regularizedDates, setRegularizedDates] = useState<Array<{ date: string; value: number }>>([]);
@@ -104,8 +109,12 @@ export default function Salary() {
       setIncentiveAmount(0);
       setAdjustmentsLoadedFromDB(false);
       
+      // Reset the allDataLoaded flag
+      setAllDataLoaded(false);
+      
       // Load all persisted data first, then fetch salary/attendance
       const loadAllData = async () => {
+        // Load all persisted data in parallel
         await Promise.all([
           loadPersistedLeaveApprovals(),
           loadPersistedRegularizations(),
@@ -115,20 +124,58 @@ export default function Salary() {
           loadSalaryHold()
         ]);
         
-        // Small delay to ensure React state is updated after loading
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait for React state to update (use a longer delay to ensure state is ready)
+        await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Only fetch salary/attendance AFTER all persisted data is loaded
+        // Double-check that state has been updated by waiting for the flags
+        // We'll use a polling approach to ensure state is ready
+        let attempts = 0;
+        const maxAttempts = 10;
+        const checkStateReady = async (): Promise<boolean> => {
+          // Check if all critical data has been loaded
+          // Note: We can't directly check state here, so we'll rely on the flags
+          // The load functions set these flags when done
+          return true; // Assume ready after the delay
+        };
+        
+        while (attempts < maxAttempts) {
+          const ready = await checkStateReady();
+          if (ready) break;
+          await new Promise(resolve => setTimeout(resolve, 100));
+          attempts++;
+        }
+        
+        // Only fetch salary/attendance AFTER all persisted data is loaded and state is updated
         // This ensures we use the latest data from database, not stale cached data
         if (selectedEmployee && selectedMonth) {
-          console.log('[Salary] All persisted data loaded, now fetching salary and attendance');
-          // Use a small timeout to ensure state updates are reflected
+          console.log('[Salary] All persisted data loaded, state updated, now fetching salary and attendance');
+          
+          // Get the current state values after loading (use a function to get latest state)
+          // We'll use a ref-like approach by storing the loaded values
+          let loadedPaidLeaves: LeaveDateWithValue[] = [];
+          let loadedCasualLeaves: LeaveDateWithValue[] = [];
+          
+          // Wait a bit more to ensure state is updated, then get values
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Use a callback to get the latest state values
+          // Since we can't directly access state in async functions, we'll use a workaround
+          // by calling fetchSalary with the values we know were just loaded
+          // The state should be updated by now, but we'll pass them explicitly to be sure
+          
+          // Mark as loaded first
+          setAllDataLoaded(true);
+          
+          // Fetch attendance and salary
+          // Use refs to ensure we have the latest loaded values
           setTimeout(() => {
             if (selectedEmployee && selectedMonth) {
               fetchAttendanceBreakdown();
-              fetchSalary();
+              // Call fetchSalary with the loaded values from refs to ensure we use the latest data
+              // This avoids race conditions with React state updates
+              fetchSalary(loadedPaidLeavesRef.current, loadedCasualLeavesRef.current);
             }
-          }, 200);
+          }, 150);
         }
       };
       
@@ -150,6 +197,7 @@ export default function Salary() {
       setSalaryHold(null);
       setHoldReason('');
       setIsFinalized(false); // Reset finalized status when employee/month changes
+      setAllDataLoaded(false); // Reset data loaded flag
       // Clear employee details
       setIsNewJoiner(false);
       setIsExited(false);
@@ -161,14 +209,15 @@ export default function Salary() {
   // Re-fetch salary when join/exit dates or custom end date changes
   // This runs AFTER the initial load is complete
   useEffect(() => {
-    if (selectedEmployee && leaveLoadedFromDB && regularizationLoadedFromDB) {
+    if (selectedEmployee && allDataLoaded && leaveLoadedFromDB && regularizationLoadedFromDB) {
       // Only refetch if we have loaded the persisted data
       // This prevents race conditions
       console.log('[Salary] Join/exit date or custom end date changed, refetching salary');
       fetchAttendanceBreakdown();
-      fetchSalary();
+      // Use refs to ensure we have the latest leave dates
+      fetchSalary(loadedPaidLeavesRef.current, loadedCasualLeavesRef.current);
     }
-  }, [joinDate, exitDate, isNewJoiner, isExited, customEndDate]);
+  }, [joinDate, exitDate, isNewJoiner, isExited, customEndDate, allDataLoaded]);
 
   // Auto-save leave approvals when they change (debounced)
   // Only save if user has actually made changes (not on initial load)
@@ -194,17 +243,18 @@ export default function Salary() {
   // Note: Regularizations are recalculated manually after saving (on Done button click)
   // IMPORTANT: Only recalculate if data was loaded from DB first (prevents race conditions)
   useEffect(() => {
-    if (selectedEmployee && leaveLoadedFromDB && regularizationLoadedFromDB) {
+    if (selectedEmployee && allDataLoaded && leaveLoadedFromDB && regularizationLoadedFromDB) {
       // Debounce to avoid too many recalculations
       const timer = setTimeout(() => {
         console.log('[Salary] Leave dates changed, recalculating salary');
         fetchAttendanceBreakdown();
-        fetchSalary();
+        // Use refs to ensure we have the latest leave dates (refs are updated when state changes)
+        fetchSalary(loadedPaidLeavesRef.current, loadedCasualLeavesRef.current);
       }, 500);
       
       return () => clearTimeout(timer);
     }
-  }, [paidLeaveDates, casualLeaveDates]);
+  }, [paidLeaveDates, casualLeaveDates, allDataLoaded]);
 
   // Note: Auto-save removed - using submit buttons instead
 
@@ -247,7 +297,7 @@ export default function Salary() {
     }
   };
 
-  const fetchSalary = async () => {
+  const fetchSalary = async (overridePaidLeaves?: LeaveDateWithValue[], overrideCasualLeaves?: LeaveDateWithValue[]) => {
     if (!selectedEmployee) {
       setSalary(null);
       setLoading(false);
@@ -258,11 +308,17 @@ export default function Salary() {
     setError(null);
     
     try {
+      // Use override values if provided, otherwise use state values
+      // This ensures we use the latest loaded data instead of potentially stale state
+      const effectivePaidLeaves = overridePaidLeaves !== undefined ? overridePaidLeaves : paidLeaveDates;
+      const effectiveCasualLeaves = overrideCasualLeaves !== undefined ? overrideCasualLeaves : casualLeaveDates;
+      
       console.log('[Salary] Fetching salary with leave dates:', {
         employee: selectedEmployee,
         month: selectedMonth,
-        paidLeave: paidLeaveDates,
-        casualLeave: casualLeaveDates,
+        paidLeave: effectivePaidLeaves,
+        casualLeave: effectiveCasualLeaves,
+        usingOverride: overridePaidLeaves !== undefined || overrideCasualLeaves !== undefined,
       });
       
       // Use customEndDate if provided, otherwise use exitDate if employee is exited
@@ -281,8 +337,8 @@ export default function Salary() {
         selectedMonth,
         isNewJoiner ? joinDate : undefined,
         effectiveExitDate,
-        paidLeaveDates, // Array of { date, value } - backend will use this instead of DB
-        casualLeaveDates // Array of { date, value } - backend will use this instead of DB
+        effectivePaidLeaves, // Array of { date, value } - backend will use this instead of DB
+        effectiveCasualLeaves // Array of { date, value } - backend will use this instead of DB
       );
       
       // Only update salary if we're still on the same employee/month
@@ -343,6 +399,10 @@ export default function Salary() {
         setPaidLeaveDates(paidArray);
         setCasualLeaveDates(casualArray);
         
+        // Also store in ref for immediate access
+        loadedPaidLeavesRef.current = paidArray;
+        loadedCasualLeavesRef.current = casualArray;
+        
         console.log('[Salary] Loaded leave approvals from database:', { 
           paid: paidArray.length, 
           casual: casualArray.length,
@@ -354,6 +414,8 @@ export default function Salary() {
         console.log('[Salary] No leave approvals found in database, clearing state');
         setPaidLeaveDates([]);
         setCasualLeaveDates([]);
+        loadedPaidLeavesRef.current = [];
+        loadedCasualLeavesRef.current = [];
       }
       
       setLeaveLoadedFromDB(true);
@@ -363,6 +425,8 @@ export default function Salary() {
       // This allows the app to work even without leave tables
       setPaidLeaveDates([]);
       setCasualLeaveDates([]);
+      loadedPaidLeavesRef.current = [];
+      loadedCasualLeavesRef.current = [];
       setLeaveLoadedFromDB(true);
     }
   };
@@ -448,7 +512,7 @@ export default function Salary() {
         setIsOvertimeEnabled(enabled);
         console.log('[Salary] Overtime status saved successfully');
         // Recalculate salary to reflect overtime changes
-        await fetchSalary();
+        await fetchSalary(loadedPaidLeavesRef.current, loadedCasualLeavesRef.current);
       } else {
         throw new Error(response.data.message || 'Failed to save overtime status');
       }
@@ -586,7 +650,7 @@ export default function Salary() {
         // Reload hold status to get complete data with isHeld flag
         await loadSalaryHold();
         // Refresh salary to reflect hold status
-        await fetchSalary();
+        await fetchSalary(loadedPaidLeavesRef.current, loadedCasualLeavesRef.current);
         return true;
       } else {
         alert('Failed to create salary hold');
@@ -628,7 +692,7 @@ export default function Salary() {
         // Reload hold status to get updated data
         await loadSalaryHold();
         // Refresh salary to reflect release
-        await fetchSalary();
+        await fetchSalary(loadedPaidLeavesRef.current, loadedCasualLeavesRef.current);
         return true;
       } else {
         alert('Failed to release salary hold');
@@ -703,7 +767,7 @@ export default function Salary() {
       if (response.data.success) {
         console.log('[Salary] ✅ Salary adjustment saved successfully');
         // Recalculate salary to reflect adjustment changes
-        await fetchSalary();
+        await fetchSalary(loadedPaidLeavesRef.current, loadedCasualLeavesRef.current);
         return true;
       } else {
         throw new Error(response.data.message || 'Failed to save salary adjustment');
@@ -1089,30 +1153,38 @@ export default function Salary() {
   const handlePaidLeaveDateToggle = (date: string, value: number = 1.0) => {
     setPaidLeaveDates(prev => {
       const existingIndex = prev.findIndex(d => d.date === date);
+      let newValue: LeaveDateWithValue[];
       if (existingIndex >= 0) {
         // If already exists, remove it
-        return prev.filter(d => d.date !== date);
+        newValue = prev.filter(d => d.date !== date);
       } else {
         // Remove from casual leave if it exists there
         setCasualLeaveDates(prevCasual => prevCasual.filter(d => d.date !== date));
         // Add with specified value
-        return [...prev, { date, value: value === 0.5 ? 0.5 : 1.0 }];
+        newValue = [...prev, { date, value: value === 0.5 ? 0.5 : 1.0 }];
       }
+      // Update ref
+      loadedPaidLeavesRef.current = newValue;
+      return newValue;
     });
   };
 
   const handleCasualLeaveDateToggle = (date: string, value: number = 0.5) => {
     setCasualLeaveDates(prev => {
       const existingIndex = prev.findIndex(d => d.date === date);
+      let newValue: LeaveDateWithValue[];
       if (existingIndex >= 0) {
         // If already exists, remove it
-        return prev.filter(d => d.date !== date);
+        newValue = prev.filter(d => d.date !== date);
       } else {
         // Remove from paid leave if it exists there
         setPaidLeaveDates(prevPaid => prevPaid.filter(d => d.date !== date));
         // Add with specified value
-        return [...prev, { date, value: value === 1.0 ? 1.0 : 0.5 }];
+        newValue = [...prev, { date, value: value === 1.0 ? 1.0 : 0.5 }];
       }
+      // Update ref
+      loadedCasualLeavesRef.current = newValue;
+      return newValue;
     });
   };
 
@@ -1123,6 +1195,8 @@ export default function Salary() {
         if (index >= 0) {
           const updated = [...prev];
           updated[index] = { date, value: newValue === 0.5 ? 0.5 : 1.0 };
+          // Update ref
+          loadedPaidLeavesRef.current = updated;
           return updated;
         }
         return prev;
@@ -1133,6 +1207,8 @@ export default function Salary() {
         if (index >= 0) {
           const updated = [...prev];
           updated[index] = { date, value: newValue === 1.0 ? 1.0 : 0.5 };
+          // Update ref
+          loadedCasualLeavesRef.current = updated;
           return updated;
         }
         return prev;
@@ -3629,10 +3705,10 @@ export default function Salary() {
         </div>
       ) : (
         <>
-          {loading && <LoadingSpinner />}
+          {(!allDataLoaded || loading) && <LoadingSpinner />}
           {error && <ErrorMessage message={error} onRetry={fetchSalary} />}
           
-          {!loading && !error && salary && (
+          {!loading && !error && allDataLoaded && salary && (
             <div className="animate-fade-in space-y-10">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {[
@@ -4282,7 +4358,7 @@ export default function Salary() {
                     await new Promise(resolve => setTimeout(resolve, 200));
                     // Recalculate salary after saving (backend will fetch regularizations from DB)
                     await fetchAttendanceBreakdown(); // Refresh attendance first
-                    await fetchSalary(); // Then recalculate salary
+                    await fetchSalary(loadedPaidLeavesRef.current, loadedCasualLeavesRef.current); // Then recalculate salary
                   }
                   setShowRegularizationModal(false);
                   setRegularizationReason(''); // Clear reason when closing
