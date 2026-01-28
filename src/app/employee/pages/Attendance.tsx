@@ -1,9 +1,11 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import { getAttendanceData, type AttendanceData } from '@/services/api';
 import { AttendanceRecord, AttendanceStatus } from '@/types';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const Attendance: React.FC = () => {
   const [attendanceData, setAttendanceData] = useState<AttendanceData | null>(null);
@@ -12,6 +14,29 @@ const Attendance: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().toISOString().slice(0, 7) // YYYY-MM
   );
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(() => {
+    const [y] = selectedMonth.split('-').map(Number);
+    return y;
+  });
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const [y] = selectedMonth.split('-').map(Number);
+    setPickerYear(y);
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    };
+    if (pickerOpen) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [pickerOpen]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -23,6 +48,7 @@ const Attendance: React.FC = () => {
       } catch (err) {
         console.error('Failed to fetch attendance:', err);
         setError(err instanceof Error ? err.message : 'Failed to load attendance data');
+        setAttendanceData(null);
       } finally {
         setLoading(false);
       }
@@ -43,16 +69,18 @@ const Attendance: React.FC = () => {
       return dayDate <= today;
     });
     
-    // Recalculate summary based on filtered data
+    // Holiday not counted in any stat: only in its own "Holiday" count
+    const isHoliday = (d: { status?: string }) => String(d.status || '').toLowerCase() === 'holiday';
     const filteredSummary = {
-      fullDays: filteredBreakdown.filter(d => String(d.status) === 'full-day' || d.status === AttendanceStatus.PRESENT || String(d.status).toLowerCase() === 'present').length,
-      halfDays: filteredBreakdown.filter(d => String(d.status) === 'half-day' || d.status === AttendanceStatus.HALF || String(d.status).toLowerCase() === 'half').length,
-      absentDays: filteredBreakdown.filter(d => String(d.status) === 'absent' || d.status === AttendanceStatus.ABSENT || String(d.status).toLowerCase() === 'absent').length,
-      lateDays: filteredBreakdown.filter(d => d.isLate).length,
-      earlyExits: filteredBreakdown.filter(d => d.isEarlyExit).length,
-      tenMinLate: filteredBreakdown.filter(d => d.minutesLate && d.minutesLate >= 10 && d.minutesLate < 30).length,
-      thirtyMinLate: filteredBreakdown.filter(d => d.minutesLate && d.minutesLate >= 30).length,
-      totalWorkedHours: filteredBreakdown.reduce((sum, d) => sum + (d.totalHours || 0), 0),
+      fullDays: filteredBreakdown.filter(d => !isHoliday(d) && (String(d.status) === 'full-day' || d.status === AttendanceStatus.PRESENT || String(d.status).toLowerCase() === 'present')).length,
+      halfDays: filteredBreakdown.filter(d => !isHoliday(d) && (String(d.status) === 'half-day' || d.status === AttendanceStatus.HALF || String(d.status).toLowerCase() === 'half')).length,
+      absentDays: filteredBreakdown.filter(d => !isHoliday(d) && (String(d.status) === 'absent' || d.status === AttendanceStatus.ABSENT || String(d.status).toLowerCase() === 'absent')).length,
+      holidayDays: filteredBreakdown.filter(d => isHoliday(d)).length,
+      lateDays: filteredBreakdown.filter(d => !isHoliday(d) && d.isLate).length,
+      earlyExits: filteredBreakdown.filter(d => !isHoliday(d) && d.isEarlyExit).length,
+      tenMinLate: filteredBreakdown.filter(d => !isHoliday(d) && d.minutesLate != null && d.minutesLate >= 10 && d.minutesLate < 30).length,
+      thirtyMinLate: filteredBreakdown.filter(d => !isHoliday(d) && d.minutesLate != null && d.minutesLate >= 30).length,
+      totalWorkedHours: filteredBreakdown.filter(d => !isHoliday(d)).reduce((sum, d) => sum + (d.totalHours || 0), 0),
     };
     
     return {
@@ -140,14 +168,71 @@ const Attendance: React.FC = () => {
           <h1 className="text-4xl font-black text-slate-900 tracking-tight">Attendance Log</h1>
           {/* <p className="text-slate-400 font-semibold tracking-wide">Biometric logs and presence monitoring</p> */}
         </div>
-        <div className="flex items-center space-x-3">
-          <label className="text-sm font-semibold text-slate-700">Month:</label>
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
+        <div className="relative" ref={pickerRef}>
+          <label className="text-sm font-semibold text-slate-700 sr-only">Select month</label>
+          <button
+            type="button"
+            onClick={() => setPickerOpen((o) => !o)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-800 font-semibold shadow-sm hover:bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+          >
+            <Calendar className="w-5 h-5 text-slate-500" />
+            {(() => {
+              const [y, m] = selectedMonth.split('-').map(Number);
+              return `${MONTH_NAMES[m - 1]} ${y}`;
+            })()}
+          </button>
+          {pickerOpen && (
+            <div className="absolute right-0 top-full mt-2 z-50 w-72 bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setPickerYear((y) => y - 1); }}
+                  className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition-colors"
+                  aria-label="Previous year"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <span className="text-sm font-bold text-slate-800">{pickerYear}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setPickerYear((y) => y + 1); }}
+                  className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition-colors"
+                  aria-label="Next year"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-3 grid grid-cols-3 gap-1">
+                {MONTH_NAMES.map((name, i) => {
+                  const monthNum = i + 1;
+                  const value = `${pickerYear}-${String(monthNum).padStart(2, '0')}`;
+                  const isSelected = value === selectedMonth;
+                  const now = new Date();
+                  const isFuture = pickerYear > now.getFullYear() || (pickerYear === now.getFullYear() && monthNum > now.getMonth() + 1);
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedMonth(value);
+                        setPickerOpen(false);
+                      }}
+                      className={`py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : isFuture
+                            ? 'text-slate-300 cursor-default'
+                            : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700'
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -169,6 +254,11 @@ const Attendance: React.FC = () => {
             <div key={i} className="h-20 bg-slate-100 rounded-xl animate-pulse"></div>
           ))}
         </div>
+      ) : filteredAttendance && filteredAttendance.dailyBreakdown.length === 0 ? (
+        <Card className="!px-8 !py-12 text-center">
+          <p className="text-slate-600 font-semibold">No attendance for the selected month.</p>
+          <p className="text-slate-500 text-sm mt-2">Choose a past or current month to view attendance.</p>
+        </Card>
       ) : filteredAttendance ? (
         <>
           {/* Leave & Regularization Summary */}
@@ -236,13 +326,13 @@ const Attendance: React.FC = () => {
             return null;
           })()}
 
-          {/* Analytics Summary */}
-          <div className="grid grid-cols-1  md:grid-cols-2 lg:grid-cols-7 gap-4">
+          {/* Analytics Summary (Holiday shown separately, not in Present or Absent) */}
+          <div className="grid grid-cols-1  md:grid-cols-2 lg:grid-cols-8 gap-4">
             {[
-              // { label: 'Standard Shifts', val: filteredAttendance.summary.fullDays, color: 'text-emerald-600' },
               { label: 'Full Days', val: filteredAttendance.summary.fullDays, color: 'text-emerald-600' },
               { label: 'Half Days', val: filteredAttendance.summary.halfDays, color: 'text-amber-600' },
               { label: 'Absent Days', val: filteredAttendance.summary.absentDays, color: 'text-rose-600' },
+              { label: 'Holiday', val: filteredAttendance.summary.holidayDays ?? 0, color: 'text-sky-600' },
               { label: 'Late Days', val: filteredAttendance.summary.lateDays, color: 'text-orange-600' },
               { label: 'Early Exits', val: filteredAttendance.summary.earlyExits, color: 'text-indigo-600' },
               { label: '10 Min Late', val: filteredAttendance.summary.tenMinLate, color: 'text-red-600' },
