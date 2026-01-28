@@ -16,6 +16,7 @@ import AdminAddEmployee from '@/app/admin/pages/AddEmployee';
 import AdminAttendance from '@/app/admin/pages/Attendance';
 import AdminSalary from '@/app/admin/pages/Salary';
 import AdminSalarySummary from '@/app/admin/pages/SalarySummary';
+import AdminHolidays from '@/app/admin/pages/Holidays';
 
 // Employee Layout & Pages
 import EmployeeLayout from '@/app/employee/layouts/Layout';
@@ -69,6 +70,7 @@ const AdminRoutes = () => (
         <Route path="attendance" element={<AdminAttendance />} />
         <Route path="salary" element={<AdminSalary />} />
         <Route path="salary/summary" element={<AdminSalarySummary />} />
+        <Route path="holidays" element={<AdminHolidays />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Route>

@@ -65,7 +65,8 @@ export enum AttendanceStatus {
   HALF = 'Half',
   ABSENT = 'Absent',
   LEAVE = 'Leave',
-  WEEK_OFF = 'Week Off'
+  WEEK_OFF = 'Week Off',
+  HOLIDAY = 'Holiday'
 }
 
 export interface AttendanceLog {
@@ -211,6 +212,19 @@ export interface LeaveRequest {
 export interface LeaveDateWithValue {
   date: string;
   value: number;
+}
+
+// Holiday Types
+export interface Holiday {
+  id: number;
+  date: string; // YYYY-MM-DD
+  name: string;
+  description?: string;
+  isActive: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 // Other Types

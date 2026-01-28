@@ -8,6 +8,7 @@ import type {
   User,
   AttendanceRecord,
   SalaryRecord,
+  Holiday,
 } from '@/types';
 import { SalaryStatus } from '@/types';
 
@@ -139,6 +140,26 @@ const adminApi = {
   // Auth
   login: (username: string, password: string) =>
     apiClient.post<ApiResponse<{ token: string; username: string; role: string }>>('/auth/admin/login', { username, password }),
+  
+  // Holidays
+  holidays: {
+    getAll: (year?: number) => {
+      const yearParam = year ? `?year=${year}` : '';
+      return apiClient.get<ApiResponse<Holiday[]>>(`/holidays${yearParam}`);
+    },
+    getById: (id: number) =>
+      apiClient.get<ApiResponse<Holiday>>(`/holidays/${id}`),
+    getByDate: (date: string) =>
+      apiClient.get<ApiResponse<Holiday | null>>(`/holidays/date/${date}`),
+    getByDateRange: (start: string, end: string) =>
+      apiClient.get<ApiResponse<Holiday[]>>(`/holidays/range?start=${start}&end=${end}`),
+    create: (holiday: { date: string; name: string; description?: string }) =>
+      apiClient.post<ApiResponse<Holiday>>('/holidays', holiday),
+    update: (id: number, updates: { name?: string; description?: string }) =>
+      apiClient.put<ApiResponse<Holiday>>(`/holidays/${id}`, updates),
+    delete: (id: number) =>
+      apiClient.delete<ApiResponse<void>>(`/holidays/${id}`),
+  },
 };
 
 // Employee Self-Service APIs

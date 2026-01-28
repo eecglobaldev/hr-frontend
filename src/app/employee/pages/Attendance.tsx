@@ -81,6 +81,9 @@ const Attendance: React.FC = () => {
     if (statusStr === 'weekoff' || statusStr === 'week off') {
       return <Badge variant="info">Week Off</Badge>;
     }
+    if (statusStr === 'holiday') {
+      return <Badge variant="info">Holiday</Badge>;
+    }
     
     // Handle enum values as fallback
     switch (status) {
@@ -89,6 +92,7 @@ const Attendance: React.FC = () => {
       case AttendanceStatus.LEAVE: return <Badge variant="warning">Leave</Badge>;
       case AttendanceStatus.HALF: return <Badge variant="warning">Half Day</Badge>;
       case AttendanceStatus.WEEK_OFF: return <Badge variant="info">Week Off</Badge>;
+      case AttendanceStatus.HOLIDAY: return <Badge variant="info">Holiday</Badge>;
       default: return null;
     }
   };

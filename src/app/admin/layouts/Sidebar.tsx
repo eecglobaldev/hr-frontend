@@ -5,6 +5,7 @@ import {
   Calendar, 
   Wallet,
   FileText,
+  CalendarDays,
   X
 } from 'lucide-react';
 
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'Attendance', to: '/admin/attendance', icon: Calendar },
   { name: 'Salary', to: '/admin/salary', icon: Wallet },
   { name: 'Salary Summary', to: '/admin/salary/summary', icon: FileText },
+  { name: 'Holidays', to: '/admin/holidays', icon: CalendarDays },
 ];
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
