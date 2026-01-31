@@ -518,7 +518,9 @@ export default function Salary() {
       }
     } catch (err: any) {
       console.error('[Salary] Error saving overtime status:', err);
-      alert(`Failed to save overtime status: ${err.message}`);
+      const details = err.response?.data?.details;
+      const msg = err.response?.data?.message || err.message;
+      alert(`Failed to save overtime status: ${msg}${details ? `\n\nDetails: ${details}` : ''}`);
     } finally {
       setIsSavingOvertime(false);
     }
