@@ -280,6 +280,8 @@ export default function Attendance() {
       } else if (day.status === 'weekoff') {
         const weekoffType = day.weekoffType || (day as any).weekoffType;
         leaveStatus = weekoffType === 'paid' ? 'PAID' : 'UNPAID';
+      } else if (day.status === 'holiday') {
+        leaveStatus = 'HOLIDAY';
       }
       
       let lateFlag = '';
@@ -315,6 +317,8 @@ export default function Attendance() {
       } else if (day.status === 'weekoff') {
         const weekoffType = day.weekoffType || (day as any).weekoffType;
         attendanceValue = weekoffType === 'paid' ? '1' : '0';
+      } else if (day.status === 'holiday') {
+        attendanceValue = '1'; // Holiday counts as worked day for PDF and totals
       } else if (day.status === 'not-active') {
         attendanceValue = '0';
       }
@@ -561,6 +565,8 @@ export default function Attendance() {
       } else if (day.status === 'weekoff') {
         const weekoffType = day.weekoffType || (day as any).weekoffType;
         leaveStatus = weekoffType === 'paid' ? 'PAID' : 'UNPAID';
+      } else if (day.status === 'holiday') {
+        leaveStatus = 'HOLIDAY';
       }
       
       // Build flags array (LATE, EARLY EXIT)
@@ -574,7 +580,7 @@ export default function Attendance() {
         day.isEarlyExit ? 'EARLY EXIT' : ''
       ].filter(Boolean).join(', ');
       
-      // Calculate attendance value
+      // Calculate attendance value (holiday counts as 1 worked day)
       let attendanceValue = '0';
       
       // Check if it's a paid leave first (overrides other statuses)
@@ -600,6 +606,8 @@ export default function Attendance() {
       } else if (day.status === 'weekoff') {
         const weekoffType = day.weekoffType || (day as any).weekoffType;
         attendanceValue = weekoffType === 'paid' ? '1' : '0';
+      } else if (day.status === 'holiday') {
+        attendanceValue = '1'; // Holiday counts as worked day for PDF and totals
       } else if (day.status === 'not-active') {
         attendanceValue = '0';
       }
