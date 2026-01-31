@@ -1768,6 +1768,8 @@ export default function Salary() {
           // Backend already calculated weekoffType correctly when joinDate is passed
           const weekoffType = (day as any).weekoffType;
           leaveStatus = weekoffType === 'paid' ? 'PAID' : 'UNPAID';
+        } else if (day.status === 'holiday') {
+          leaveStatus = 'HOLIDAY';
         }
         
         // Build flags array (LATE, EARLY EXIT)
@@ -1865,6 +1867,9 @@ export default function Salary() {
           // Weekoff: check if paid or unpaid
           // Backend already calculated weekoffType correctly when joinDate is passed
           attendanceValue = (day as any).weekoffType === 'paid' ? '1' : '0';
+        } else if (day.status === 'holiday') {
+          // Holiday counts as 1 worked day for PDF totals
+          attendanceValue = '1';
         } else if (day.status === 'not-active') {
           // Not active = 0
           attendanceValue = '0';
@@ -2731,6 +2736,8 @@ export default function Salary() {
                 } else if (day.status === 'weekoff') {
                   const weekoffType = (day as any).weekoffType;
                   leaveStatus = weekoffType === 'paid' ? 'PAID' : 'UNPAID';
+                } else if (day.status === 'holiday') {
+                  leaveStatus = 'HOLIDAY';
                 }
                 
                 let lateFlag = '';
@@ -2795,6 +2802,8 @@ export default function Salary() {
                   attendanceValue = '0';
                 } else if (day.status === 'weekoff') {
                   attendanceValue = (day as any).weekoffType === 'paid' ? '1' : '0';
+                } else if (day.status === 'holiday') {
+                  attendanceValue = '1'; // Holiday counts as 1 worked day for PDF totals
                 } else if (day.status === 'not-active') {
                   attendanceValue = '0';
                 }
