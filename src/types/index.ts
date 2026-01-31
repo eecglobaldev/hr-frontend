@@ -85,7 +85,7 @@ export interface DailyAttendance {
   isLate: boolean;
   minutesLate: number | null;
   isEarlyExit: boolean;
-  status: 'full-day' | 'half-day' | 'absent' | 'not-active' | 'weekoff';
+  status: 'full-day' | 'half-day' | 'absent' | 'not-active' | 'weekoff' | 'holiday';
   logCount: number;
   weekoffType?: 'paid' | 'unpaid';
 }
