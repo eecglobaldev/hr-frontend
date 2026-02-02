@@ -105,6 +105,8 @@ export interface AttendanceRecord {
   logCount?: number;
   isPaidLeave?: boolean;
   isCasualLeave?: boolean;
+  /** 1.0 = full day leave, 0.5 = half day leave (for status column when PL/CL applied) */
+  leaveValue?: number;
   isRegularized?: boolean;
   regularizationValue?: number;
   regularizationOriginalStatus?: string;

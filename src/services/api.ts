@@ -343,6 +343,8 @@ const employeeApi = {
     const monthParam = month ? `?month=${month}` : '';
     return apiClient.get<ApiResponse<{ summary: any; dailyBreakdown: AttendanceRecord[] }>>(`/employee/attendance${monthParam}`);
   },
+  getRawLogs: (date: string) =>
+    apiClient.get<ApiResponse<{ date: string; logCount: number; logs: Array<{ time: string }> }>>(`/employee/attendance/logs/${date}`),
 };
 
 // Admin APIs (from admin-dashboard)

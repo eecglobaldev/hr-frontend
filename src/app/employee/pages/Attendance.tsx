@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
-import { getAttendanceData, type AttendanceData } from '@/services/api';
+import { getAttendanceData, api, type AttendanceData } from '@/services/api';
 import { AttendanceRecord, AttendanceStatus } from '@/types';
 import { AlertCircle, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+
+type RawLogItem = { time: string };
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -11,6 +13,8 @@ const Attendance: React.FC = () => {
   const [attendanceData, setAttendanceData] = useState<AttendanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rawLogs, setRawLogs] = useState<Record<string, RawLogItem[]>>({});
+  const [loadingRawLogs, setLoadingRawLogs] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().toISOString().slice(0, 7) // YYYY-MM
   );
@@ -20,6 +24,14 @@ const Attendance: React.FC = () => {
     return y;
   });
   const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Detect split shift: any day with more than 2 punch entries
+  const isSplitShift = useMemo(() => {
+    if (!attendanceData) return false;
+    const main = attendanceData.dailyBreakdown?.some((day) => (day.logCount ?? 0) > 2) ?? false;
+    const after25 = attendanceData.after25Breakdown?.some((day) => (day.logCount ?? 0) > 2) ?? false;
+    return main || after25;
+  }, [attendanceData]);
 
   useEffect(() => {
     const [y] = selectedMonth.split('-').map(Number);
@@ -43,6 +55,7 @@ const Attendance: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
+        setRawLogs({});
         const data = await getAttendanceData(selectedMonth);
         setAttendanceData(data);
       } catch (err) {
@@ -56,6 +69,36 @@ const Attendance: React.FC = () => {
     
     fetchData();
   }, [selectedMonth]);
+
+  // When split shift, fetch raw logs for each day (main + after 25th) to show 4 punch columns
+  useEffect(() => {
+    if (!attendanceData || !isSplitShift) {
+      setRawLogs({});
+      return;
+    }
+    const dates = new Set<string>();
+    attendanceData.dailyBreakdown?.forEach((day) => dates.add(day.date));
+    attendanceData.after25Breakdown?.forEach((day) => dates.add(day.date));
+    if (dates.size === 0) return;
+
+    let cancelled = false;
+    setLoadingRawLogs(true);
+    (async () => {
+      const logsMap: Record<string, RawLogItem[]> = {};
+      for (const date of dates) {
+        if (cancelled) return;
+        try {
+          const res = await api.employee.getRawLogs(date);
+          if (res.data?.data?.logs) logsMap[date] = res.data.data.logs;
+        } catch (e) {
+          console.warn(`[Attendance] Failed to fetch raw logs for ${date}:`, e);
+        }
+      }
+      if (!cancelled) setRawLogs(logsMap);
+      setLoadingRawLogs(false);
+    })();
+    return () => { cancelled = true; };
+  }, [attendanceData, isSplitShift]);
 
   // Filter attendance to show only dates up to current date
   const filteredAttendance = useMemo(() => {
@@ -95,7 +138,7 @@ const Attendance: React.FC = () => {
     
     // Handle API string values ('full-day', 'half-day', 'absent', 'weekoff', etc.)
     if (statusStr === 'full-day' || statusStr === 'present') {
-      return <Badge variant="success">Present</Badge>;
+      return <Badge variant="success">Full Day</Badge>;
     }
     if (statusStr === 'half-day' || statusStr === 'half') {
       return <Badge variant="warning">Half Day</Badge>;
@@ -115,7 +158,7 @@ const Attendance: React.FC = () => {
     
     // Handle enum values as fallback
     switch (status) {
-      case AttendanceStatus.PRESENT: return <Badge variant="success">Present</Badge>;
+      case AttendanceStatus.PRESENT: return <Badge variant="success">Full Day</Badge>;
       case AttendanceStatus.ABSENT: return <Badge variant="danger">Absent</Badge>;
       case AttendanceStatus.LEAVE: return <Badge variant="warning">Leave</Badge>;
       case AttendanceStatus.HALF: return <Badge variant="warning">Half Day</Badge>;
@@ -128,6 +171,14 @@ const Attendance: React.FC = () => {
   const formatDate = (dateStr: string): string => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const formatDateShort = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    const day = date.getDate();
+    const month = MONTH_NAMES[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
   };
 
   const formatTime = (timeStr: string | null | undefined): string => {
@@ -272,7 +323,7 @@ const Attendance: React.FC = () => {
             
             if (plDates.length > 0 || clDates.length > 0 || regDates.length > 0) {
               return (
-                <Card title="Leave & Regularization Summary" className="!px-6 !py-6">
+                <Card title="Leave & Regularization Summary" titleClassName="text-blue-600" className="!px-6 !py-6">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {plDates.length > 0 && (
                       <div>
@@ -346,15 +397,29 @@ const Attendance: React.FC = () => {
             ))}
           </div>
 
-          {/* Detailed Logs Table */}
-          <Card title="Attendance" className="!px-0 !py-0 overflow-hidden">
+          {/* Detailed Logs Table – split shift shows 4 punch columns (Punch In 1, Punch Out 1, Punch In 2, Punch Out 2) */}
+          <Card title="Attendance" titleClassName="text-blue-600" className="!px-0 !py-0 overflow-hidden">
+            {loadingRawLogs && isSplitShift ? (
+              <div className="px-8 py-8 text-center text-slate-500 font-semibold">Loading punch details…</div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-white/40 backdrop-blur-md border-b border-slate-100">
                     <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Timestamp</th>
-                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">First In</th>
-                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Last Out</th>
+                    {isSplitShift ? (
+                      <>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch In 1</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch Out 1</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch In 2</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch Out 2</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">First In</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Last Out</th>
+                      </>
+                    )}
                     <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Duration</th>
                     <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Status</th>
                     <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Flags</th>
@@ -364,27 +429,50 @@ const Attendance: React.FC = () => {
                 <tbody className="divide-y divide-slate-50">
                   {filteredAttendance.dailyBreakdown.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-8 py-12 text-center">
+                      <td colSpan={isSplitShift ? 9 : 7} className="px-8 py-12 text-center">
                         <p className="text-slate-400 font-semibold">No attendance records found for this month</p>
                       </td>
                     </tr>
                   ) : (
-                    filteredAttendance.dailyBreakdown.map((day) => (
+                    filteredAttendance.dailyBreakdown.map((day) => {
+                      const dayRawLogs = rawLogs[day.date] || [];
+                      return (
                       <tr key={day.date} className="hover:bg-indigo-50/30 transition-all group">
                         <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-900 font-bold">
-                          {formatDate(day.date)}
+                          {formatDateShort(day.date)}
                         </td>
-                        <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
-                          {formatTime(day.firstEntry)}
-                        </td>
-                        <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
-                          {formatTime(day.lastExit)}
-                        </td>
+                        {isSplitShift ? (
+                          <>
+                            <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                              {dayRawLogs[0]?.time ?? '—'}
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                              {dayRawLogs[1]?.time ?? '—'}
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                              {dayRawLogs[2]?.time ?? '—'}
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                              {dayRawLogs[3]?.time ?? '—'}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                              {formatTime(day.firstEntry)}
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                              {formatTime(day.lastExit)}
+                            </td>
+                          </>
+                        )}
                         <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-900 font-bold">
                           {day.totalHours && day.totalHours > 0 ? formatHours(day.totalHours) : '—'}
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap">
-                          {getStatusBadge(day.status)}
+                          {(day.isPaidLeave || day.isCasualLeave)
+                            ? (day.leaveValue === 0.5 ? getStatusBadge('half-day') : getStatusBadge('full-day'))
+                            : getStatusBadge(day.status)}
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap">
                           <div className="flex flex-wrap gap-2">
@@ -427,13 +515,13 @@ const Attendance: React.FC = () => {
                             )}
                           </div>
                         </td>
-                        
                       </tr>
-                    ))
+                    ); })
                   )}
                 </tbody>
               </table>
             </div>
+            )}
           </Card>
 
           {/* After 25th (current period) – shown only when viewing current month and API returns after25Breakdown */}
@@ -450,8 +538,19 @@ const Attendance: React.FC = () => {
                     <thead>
                       <tr className="bg-white/40 backdrop-blur-md border-b border-slate-100">
                         <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Timestamp</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">First In</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Last Out</th>
+                        {isSplitShift ? (
+                          <>
+                            <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch In 1</th>
+                            <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch Out 1</th>
+                            <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch In 2</th>
+                            <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Punch Out 2</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">First In</th>
+                            <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Last Out</th>
+                          </>
+                        )}
                         <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Duration</th>
                         <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Status</th>
                         <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Flags</th>
@@ -459,22 +558,45 @@ const Attendance: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {attendanceData.after25Breakdown.map((day) => (
+                      {attendanceData.after25Breakdown.map((day) => {
+                        const dayRawLogs = rawLogs[day.date] || [];
+                        return (
                         <tr key={day.date} className="hover:bg-indigo-50/30 transition-all group">
                           <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-900 font-bold">
-                            {formatDate(day.date)}
+                            {formatDateShort(day.date)}
                           </td>
-                          <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
-                            {formatTime(day.firstEntry)}
-                          </td>
-                          <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
-                            {formatTime(day.lastExit)}
-                          </td>
+                          {isSplitShift ? (
+                            <>
+                              <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                                {dayRawLogs[0]?.time ?? '—'}
+                              </td>
+                              <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                                {dayRawLogs[1]?.time ?? '—'}
+                              </td>
+                              <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                                {dayRawLogs[2]?.time ?? '—'}
+                              </td>
+                              <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                                {dayRawLogs[3]?.time ?? '—'}
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                                {formatTime(day.firstEntry)}
+                              </td>
+                              <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-600 font-semibold">
+                                {formatTime(day.lastExit)}
+                              </td>
+                            </>
+                          )}
                           <td className="px-8 py-5 whitespace-nowrap text-sm text-slate-900 font-bold">
                             {day.totalHours && day.totalHours > 0 ? formatHours(day.totalHours) : '—'}
                           </td>
                           <td className="px-8 py-5 whitespace-nowrap">
-                            {getStatusBadge(day.status)}
+                            {(day.isPaidLeave || day.isCasualLeave)
+                              ? (day.leaveValue === 0.5 ? getStatusBadge('half-day') : getStatusBadge('full-day'))
+                              : getStatusBadge(day.status)}
                           </td>
                           <td className="px-8 py-5 whitespace-nowrap">
                             <div className="flex flex-wrap gap-2">
@@ -518,7 +640,7 @@ const Attendance: React.FC = () => {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      ); })}
                     </tbody>
                   </table>
                 </div>

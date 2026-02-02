@@ -880,13 +880,13 @@ const Login: React.FC = () => {
               Tier-3 Security
             </div>
           </div>
-          <button
+          {/* <button
             type="button"
             onClick={() => navigate('/admin/login')}
             className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors"
           >
             Admin Login →
-          </button>
+          </button> */}
         </div>
       </div>
     </div>
