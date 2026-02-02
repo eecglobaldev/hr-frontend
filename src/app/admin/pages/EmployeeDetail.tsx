@@ -214,18 +214,10 @@ export default function EmployeeDetail() {
     if (!employeeNo) return;
     
     try {
-      // Get assignments for current month (26th to 25th)
-      const currentMonth = getCurrentMonth();
-      const [year, monthNum] = currentMonth.split('-').map(Number);
-      const startDate = new Date(year, monthNum - 1, 26);
-      const endDate = new Date(year, monthNum, 25);
-      
-      const response = await api.employeeShifts.getAssignments(
-        employeeNo,
-        formatDate(startDate, 'yyyy-MM-dd'),
-        formatDate(endDate, 'yyyy-MM-dd')
-      );
-      setShiftAssignments(response.data.data || []);
+      // Fetch all assignments for this employee (no date filter) so newly assigned shifts always show
+      const response = await api.employeeShifts.getAssignments(employeeNo);
+      const list = response.data?.data ?? response.data ?? [];
+      setShiftAssignments(Array.isArray(list) ? list : []);
     } catch (err: any) {
       console.error('Failed to fetch shift assignments:', err);
       setShiftAssignments([]);
@@ -338,7 +330,7 @@ export default function EmployeeDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        <Card title="Personnel Context">
+        <Card title="Personnel Context" overflowVisible>
           <div className="space-y-6">
             {[
               { label: 'Full Designation', val: formatDisplayValue(employee.designation) },
@@ -367,7 +359,7 @@ export default function EmployeeDetail() {
                 )}
               </div>
               {isEditingShift ? (
-                <div className="space-y-3">
+                <div className="space-y-3 relative z-[100]">
                   <SearchableSelect
                     value={selectedShift}
                     onChange={setSelectedShift}

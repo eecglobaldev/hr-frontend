@@ -5,11 +5,13 @@ interface CardProps {
   className?: string;
   title?: string;
   action?: ReactNode;
+  /** Allow dropdowns/popovers inside the card to extend outside (uses overflow-visible + z-index) */
+  overflowVisible?: boolean;
 }
 
-export default function Card({ children, className = '', title, action }: CardProps) {
+export default function Card({ children, className = '', title, action, overflowVisible }: CardProps) {
   return (
-    <div className={`glass-card rounded-[24px] overflow-hidden shadow-2xl ${className}`}>
+    <div className={`glass-card rounded-[24px] shadow-2xl ${overflowVisible ? 'overflow-visible z-50 relative' : 'overflow-hidden'} ${className}`}>
       {(title || action) && (
         <div className="px-8 py-5 flex items-center justify-between border-b border-white/[0.05] bg-white/[0.01]">
           {title && (

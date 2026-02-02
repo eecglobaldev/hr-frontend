@@ -1463,7 +1463,7 @@ export default function Salary() {
     summaryBody.push(['LOP', `${lossOfPayDays}`]);
     summaryBody.push(['TOTAL', `${totalPayableDays}/${totalDays}`]);
     summaryBody.push(['LOP + PL + CL', `${totalLeaveAndLOP}`]);
-    summaryBody.push(['PAY DAYS', `${payDays.toFixed(1)}`]);
+    summaryBody.push(['PAY DAYS', `${payDays}`]);
     
     autoTable(doc, {
       startY: finalY1 + 3,
@@ -1598,21 +1598,18 @@ export default function Salary() {
       ]);
     }
     
-    // Late Deduction
-    // Calculate actual days for deduction (after grace period)
-    // 30+ min late days have no grace period, 10+ min late days have 3-day grace period
+    // Late Deduction (aligned with backend)
+    // 30+ min: full days only, 0.5 day each; 10–30 min: grace 3 days, then 0.25 day each
     if (lateDays > 0 && salary.breakdown.lateDeduction > 0) {
       const lateBy30MinutesDays = (salary.attendance as any).lateBy30MinutesDays || 0;
-      const lateBy10MinutesDays = (salary.attendance as any).lateBy10MinutesDays || Math.max(0, lateDays - lateBy30MinutesDays);
-      const lateDays10MinExceedingGrace = Math.max(0, lateBy10MinutesDays - 3); // Grace period: 3 days
+      const lateBy10To30MinutesDays = (salary.attendance as any).lateBy10To30MinutesDays ?? (salary.attendance as any).lateBy10MinutesDays ?? 0;
+      const lateDays10MinExceedingGrace = Math.max(0, lateBy10To30MinutesDays - 3);
       const actualLateDeductionDays = lateBy30MinutesDays + lateDays10MinExceedingGrace;
       
-      // Calculate per-day deduction rate
       let lateDeductionPerDay = 0;
       if (actualLateDeductionDays > 0) {
         lateDeductionPerDay = salary.breakdown.lateDeduction / actualLateDeductionDays;
       } else {
-        // Fallback: use total late days if calculation fails
         lateDeductionPerDay = salary.breakdown.lateDeduction / lateDays;
       }
       
@@ -1744,6 +1741,17 @@ export default function Salary() {
           (sunday as any).weekoffType = 'unpaid';
         }
       });
+
+      // Assign GRACE 1, 2, 3 to first 3 late 10–30 min days (for PDF flag display)
+      const late10To30GraceByDate: Record<string, number> = {};
+      let late10To30Count = 0;
+      for (const day of filteredDays) {
+        const isLate10To30 = day.isLate && !(day as any).isLateBy30Minutes && (day.status === 'full-day' || day.status === 'half-day');
+        if (isLate10To30 && late10To30Count < 3) {
+          late10To30Count++;
+          late10To30GraceByDate[day.date] = late10To30Count;
+        }
+      }
       
       const attendanceData = filteredDays.map(day => {
         const date = new Date(day.date);
@@ -1774,14 +1782,24 @@ export default function Salary() {
           leaveStatus = 'HOLIDAY';
         }
         
-        // Build flags array (LATE, EARLY EXIT)
+        // Build flags array (LATE, -50%/-25%, GRACE 1/2/3, EARLY EXIT)
         let lateFlag = '';
         if (day.isLate && day.minutesLate !== null && day.minutesLate !== undefined) {
           lateFlag = `LATE (${day.minutesLate} min)`;
         }
-        
+        const graceNum = late10To30GraceByDate[day.date];
+        const graceFlag = graceNum ? `GRACE ${graceNum}` : '';
+        // -50%: full day late 30+ min; -25%: late 10–30 min and not in grace (exceeds first 3)
+        let lateDeductionFlag = '';
+        if ((day as any).isLateBy30Minutes && day.status === 'full-day' && !isRegularized) {
+          lateDeductionFlag = '-50%';
+        } else if (day.isLate && !(day as any).isLateBy30Minutes && (day.status === 'full-day' || day.status === 'half-day') && !graceNum && !isRegularized) {
+          lateDeductionFlag = '-25%';
+        }
         const flags = [
           lateFlag,
+          lateDeductionFlag,
+          graceFlag,
           day.isEarlyExit ? 'EARLY EXIT' : ''
         ].filter(Boolean).join(', ');
         
@@ -1892,13 +1910,57 @@ export default function Salary() {
         };
       });
       
-      // Calculate total of attendance values
+      // Calculate total of attendance values (raw sum)
       const totalValue = attendanceData.reduce((sum, item) => sum + item.value, 0);
       
+      // Late deduction (same formula as backend): 30+ min full-day = 0.5 each; 10–30 min exceeding grace (3) = 0.25 each
+      const lateBy30MinutesDays = (salary.attendance as any).lateBy30MinutesDays || 0;
+      const lateBy10To30MinutesDays = (salary.attendance as any).lateBy10To30MinutesDays ?? (salary.attendance as any).lateBy10MinutesDays ?? 0;
+      const lateDays10MinExceedingGrace = Math.max(0, lateBy10To30MinutesDays - 3);
+      const lateDaysEquivalent = lateBy30MinutesDays * 0.5 + lateDays10MinExceedingGrace * 0.25;
+      // const effectiveTotalValue = Math.max(0, Math.round((totalValue - lateDaysEquivalent) * 10) / 10);
+      const effectiveTotalValue = totalValue - lateDaysEquivalent;
+
       // Prepare body data (extract just the row arrays)
       const tableBody = attendanceData.map(item => item.row);
       
-      // Add total row at the end
+      // Add subtotal (raw), late deduction breakdown (count + equivalent days), then effective total
+      if (lateDaysEquivalent > 0) {
+        tableBody.push([
+          'Subtotal',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          totalValue.toFixed(2)
+        ]);
+        if (lateBy30MinutesDays > 0) {
+          tableBody.push([
+            `Late (30+ min): ${lateBy30MinutesDays} day(s)`,
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            `-${(lateBy30MinutesDays * 0.5).toFixed(2)}`
+          ]);
+        }
+        if (lateDays10MinExceedingGrace > 0) {
+          tableBody.push([
+            `Late (10–30 min, >3): ${lateDays10MinExceedingGrace} day(s)`,
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            `-${(lateDays10MinExceedingGrace * 0.25).toFixed(2)}`
+          ]);
+        }
+      }
       tableBody.push([
         'TOTAL',
         '',
@@ -1907,7 +1969,7 @@ export default function Salary() {
         '',
         '',
         '',
-        totalValue.toFixed(2)
+        effectiveTotalValue.toFixed(2)
       ]);
       
       autoTable(doc, {
@@ -1935,6 +1997,28 @@ export default function Salary() {
           fillColor: [250, 250, 250] // Very light gray, uses minimal ink
         },
         didParseCell: function(data: any) {
+          const cellText = Array.isArray(data.cell.text) ? data.cell.text.join(' ') : String(data.cell.raw ?? data.cell.text ?? '');
+          // Status column (4): ABSENT in red; Leave column (6): REG (ABSENT) in red
+          if (data.section === 'body' && ((data.column.index === 4 && cellText === 'ABSENT') || (data.column.index === 6 && cellText.includes('ABSENT')))) {
+            data.cell.styles.textColor = [220, 38, 38]; // red
+          }
+
+          if (data.section === 'body' && ((data.column.index === 4 && cellText === 'FULL-DAY') || (data.column.index === 6 && cellText.includes('FULL-DAY')))) {
+            data.cell.styles.textColor = [0, 128, 0]; // green
+          }
+          // Flags column (5): GRACE 1, GRACE 2, GRACE 3 – whole cell black (background + white text)
+          if (data.section === 'body' && data.column.index === 5 && (cellText.includes('GRACE 1') || cellText.includes('GRACE 2') || cellText.includes('GRACE 3'))) {
+            data.cell.styles.fillColor = [0, 0, 0];
+            data.cell.styles.textColor = [255, 255, 255];
+          }
+
+          // if (data.section === 'body' && ((data.column.index === 5 && cellText === 'LATE') || (data.column.index === 5 && cellText.includes('LATE')))) {
+          
+          //   data.cell.styles.fillColor = [220, 38, 38];
+          //   data.cell.styles.textColor = [255, 255, 255];
+          // }
+
+
           // Style the total row (last row)
           if (data.row.index === tableBody.length - 1) {
             data.cell.styles.fontStyle = 'bold';
@@ -2001,7 +2085,7 @@ export default function Salary() {
             0: { fontStyle: 'bold' },
             1: { halign: 'right' }
           },
-          margin: { left: 14, right: 14 },
+          margin: { left: 10, right: 10 },
         });
       } else {
         doc.setFontSize(12);
@@ -2602,8 +2686,8 @@ export default function Salary() {
             
             if (lateDays > 0 && salaryData.breakdown.lateDeduction > 0) {
               const lateBy30MinutesDays = (salaryData.attendance as any).lateBy30MinutesDays || 0;
-              const lateBy10MinutesDays = (salaryData.attendance as any).lateBy10MinutesDays || Math.max(0, lateDays - lateBy30MinutesDays);
-              const lateDays10MinExceedingGrace = Math.max(0, lateBy10MinutesDays - 3);
+              const lateBy10To30MinutesDays = (salaryData.attendance as any).lateBy10To30MinutesDays ?? (salaryData.attendance as any).lateBy10MinutesDays ?? 0;
+              const lateDays10MinExceedingGrace = Math.max(0, lateBy10To30MinutesDays - 3);
               const actualLateDeductionDays = lateBy30MinutesDays + lateDays10MinExceedingGrace;
               
               let lateDeductionPerDay = 0;
@@ -2717,6 +2801,16 @@ export default function Salary() {
                   (sunday as any).weekoffType = 'unpaid';
                 }
               });
+
+              const late10To30GraceByDateBatch: Record<string, number> = {};
+              let late10To30CountBatch = 0;
+              for (const day of filteredDays) {
+                const isLate10To30 = day.isLate && !(day as any).isLateBy30Minutes && (day.status === 'full-day' || day.status === 'half-day');
+                if (isLate10To30 && late10To30CountBatch < 3) {
+                  late10To30CountBatch++;
+                  late10To30GraceByDateBatch[day.date] = late10To30CountBatch;
+                }
+              }
               
               const attendanceData = filteredDays.map(day => {
                 const date = new Date(day.date);
@@ -2746,9 +2840,18 @@ export default function Salary() {
                 if (day.isLate && day.minutesLate !== null && day.minutesLate !== undefined) {
                   lateFlag = `LATE (${day.minutesLate} min)`;
                 }
-                
+                const graceNumBatch = late10To30GraceByDateBatch[day.date];
+                const graceFlagBatch = graceNumBatch ? `GRACE ${graceNumBatch}` : '';
+                let lateDeductionFlagBatch = '';
+                if ((day as any).isLateBy30Minutes && day.status === 'full-day' && !isRegularized) {
+                  lateDeductionFlagBatch = '-50%';
+                } else if (day.isLate && !(day as any).isLateBy30Minutes && (day.status === 'full-day' || day.status === 'half-day') && !graceNumBatch && !isRegularized) {
+                  lateDeductionFlagBatch = '-25%';
+                }
                 const flags = [
                   lateFlag,
+                  lateDeductionFlagBatch,
+                  graceFlagBatch,
                   day.isEarlyExit ? 'EARLY EXIT' : ''
                 ].filter(Boolean).join(', ');
                 
@@ -2864,6 +2967,14 @@ export default function Salary() {
                   fillColor: [250, 250, 250]
                 },
                 didParseCell: function(data: any) {
+                  const cellText = Array.isArray(data.cell.text) ? data.cell.text.join(' ') : String(data.cell.raw ?? data.cell.text ?? '');
+                  if (data.section === 'body' && ((data.column.index === 4 && cellText === 'ABSENT') || (data.column.index === 6 && cellText.includes('ABSENT')))) {
+                    data.cell.styles.textColor = [220, 38, 38]; // red
+                  }
+                  if (data.section === 'body' && data.column.index === 5 && (cellText.includes('GRACE 1') || cellText.includes('GRACE 2') || cellText.includes('GRACE 3'))) {
+                    data.cell.styles.fillColor = [0, 0, 0];
+                    data.cell.styles.textColor = [255, 255, 255];
+                  }
                   if (data.row.index === tableBody.length - 1) {
                     data.cell.styles.fontStyle = 'bold';
                     data.cell.styles.fillColor = [240, 240, 240];
@@ -2927,7 +3038,7 @@ export default function Salary() {
                     0: { fontStyle: 'bold' },
                     1: { halign: 'right' }
                   },
-                  margin: { left: 14, right: 14 },
+                  margin: { left: 13, right: 13 },
                 });
               } else {
                 doc.setFontSize(12);
