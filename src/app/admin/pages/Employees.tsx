@@ -46,7 +46,8 @@ export default function Employees() {
     monthlyCTC: '',
     annualCTC: '',
     BankAccNo: '',
-    IFSCCode: ''
+    IFSCCode: '',
+    PANCardNo: ''
   });
 
   useEffect(() => {
@@ -168,6 +169,7 @@ export default function Employees() {
         shift: formData.shift || null,
         BankAccNo: formData.BankAccNo || null,
         IFSCCode: formData.IFSCCode || null,
+        PANCardNo: formData.PANCardNo || null,
         createdBy: 'Admin',
       };
 
@@ -194,7 +196,8 @@ export default function Employees() {
         monthlyCTC: '',
         annualCTC: '',
         BankAccNo: '',
-        IFSCCode: ''
+        IFSCCode: '',
+        PANCardNo: ''
       });
       
       alert('Employee onboarded successfully!');
@@ -434,6 +437,14 @@ export default function Employees() {
                     type="text"
                     placeholder="e.g. SBIN0001234"
                     value={formData.IFSCCode}
+                    onChange={handleInputChange}
+                  />
+                  <Input
+                    label="PAN Card No."
+                    name="PANCardNo"
+                    type="text"
+                    placeholder="e.g. ABCDE1234F"
+                    value={formData.PANCardNo}
                     onChange={handleInputChange}
                   />
                 </div>

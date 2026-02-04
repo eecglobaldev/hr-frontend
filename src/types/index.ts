@@ -45,6 +45,7 @@ export interface Employee {
   shift?: string | null;
   BankAccountNo: string;
   IFSCcode: string;
+  PANCardNo?: string | null;
 }
 
 // User Types
