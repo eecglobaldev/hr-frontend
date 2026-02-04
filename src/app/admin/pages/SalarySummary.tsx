@@ -182,7 +182,8 @@ export default function SalarySummary() {
     const tableData = (summaryData.data || []).map((salary) => {
       // Calculate additions (incentive + adjustment additions)
       const additions = (salary.breakdown.incentiveAmount || 0) + (salary.breakdown.adjustmentAdditions || 0);
-      
+      const pl = salary.attendance.paidLeaveDays ?? 0;
+      const cl = salary.attendance.casualLeaveDays ?? 0;
       return [
         salary.employeeCode || 'N/A',
         (salary as any).employeeName || salary.employeeCode || 'Unknown',
@@ -191,6 +192,8 @@ export default function SalarySummary() {
         `${salary.attendance.sundaysInMonth || 0}`, // WO (Week Off - paid Sundays)
         `${(salary.attendance.totalPayableDays || 0).toFixed(1)}`, // Payable Days
         `${salary.attendance.absentDays || 0}`, // LOP (Loss of Pay)
+        `${pl.toFixed(1)}`, // PL (Privilege Leave) approved
+        `${cl.toFixed(1)}`, // CL (Casual Leave) approved
         formatPdfCurrency(salary.baseSalary),
         formatPdfCurrency(salary.grossSalary),
         formatPdfCurrency(salary.breakdown.totalDeductions),
@@ -202,12 +205,16 @@ export default function SalarySummary() {
     // Add total row
     const totals = summaryData.data.reduce((acc, salary) => {
       const additions = (salary.breakdown.incentiveAmount || 0) + (salary.breakdown.adjustmentAdditions || 0);
+      const pl = salary.attendance.paidLeaveDays ?? 0;
+      const cl = salary.attendance.casualLeaveDays ?? 0;
       return {
         presentDays: acc.presentDays + (salary.attendance.fullDays || 0),
         halfDays: acc.halfDays + (salary.attendance.halfDays || 0),
         wo: acc.wo + (salary.attendance.sundaysInMonth || 0),
         payableDays: acc.payableDays + (salary.attendance.totalPayableDays || 0),
         lop: acc.lop + (salary.attendance.absentDays || 0),
+        pl: acc.pl + pl,
+        cl: acc.cl + cl,
         baseSalary: acc.baseSalary + salary.baseSalary,
         grossSalary: acc.grossSalary + salary.grossSalary,
         deductions: acc.deductions + salary.breakdown.totalDeductions,
@@ -220,6 +227,8 @@ export default function SalarySummary() {
       wo: 0,
       payableDays: 0,
       lop: 0,
+      pl: 0,
+      cl: 0,
       baseSalary: 0,
       grossSalary: 0,
       deductions: 0,
@@ -235,6 +244,8 @@ export default function SalarySummary() {
       `${totals.wo}`,
       `${totals.payableDays.toFixed(1)}`,
       `${totals.lop}`,
+      `${totals.pl.toFixed(1)}`,
+      `${totals.cl.toFixed(1)}`,
       formatPdfCurrency(totals.baseSalary),
       formatPdfCurrency(totals.grossSalary),
       formatPdfCurrency(totals.deductions),
@@ -247,26 +258,27 @@ export default function SalarySummary() {
     const rightMargin = 14;
     const availableWidth = pageWidth - leftMargin - rightMargin;
     
-    // Calculate column widths as percentages of available width
-    // Adjusted for more columns: Code: 6%, Name: 12%, Present: 4%, Half: 4%, WO: 3%, Payable: 5%, LOP: 4%, Base: 8%, Gross: 8%, Deductions: 8%, Additions: 8%, Net: 8%
+    // Calculate column widths: Code, Name, Present, Half, WO, Payable, LOP, PL, CL, Base, Gross, Deductions, Additions, Net
     const columnWidths = [
-      availableWidth * 0.06,  // Employee Code
-      availableWidth * 0.12,  // Name
-      availableWidth * 0.04,  // Present Days
-      availableWidth * 0.04,  // Half Days
-      availableWidth * 0.03,  // WO
-      availableWidth * 0.05,  // Payable Days
-      availableWidth * 0.04,  // LOP
-      availableWidth * 0.08,  // Base Salary
-      availableWidth * 0.08,  // Gross Salary
-      availableWidth * 0.08,  // Deductions
-      availableWidth * 0.08,  // Additions
-      availableWidth * 0.08,  // Net Salary
+      availableWidth * 0.055,  // Employee Code
+      availableWidth * 0.11,   // Name
+      availableWidth * 0.035, // Present Days
+      availableWidth * 0.035, // Half Days
+      availableWidth * 0.025, // WO
+      availableWidth * 0.045, // Payable Days
+      availableWidth * 0.03,  // LOP
+      availableWidth * 0.028, // PL
+      availableWidth * 0.028, // CL
+      availableWidth * 0.07,  // Base Salary
+      availableWidth * 0.07,  // Gross Salary
+      availableWidth * 0.07,  // Deductions
+      availableWidth * 0.07,  // Additions
+      availableWidth * 0.07,  // Net Salary
     ];
 
     autoTable(doc, {
       startY: 40,
-      head: [['Code', 'Name', 'Present', 'Half', 'WO', 'Payable', 'LOP', 'Base', 'Gross', 'Deductions', 'Additions', 'Net']],
+      head: [['Code', 'Name', 'Present', 'Half', 'WO', 'Payable', 'LOP', 'PL', 'CL', 'Base', 'Gross', 'Deductions', 'Additions', 'Net']],
       body: tableData,
       theme: 'striped',
       headStyles: {
@@ -299,18 +311,20 @@ export default function SalarySummary() {
         }
       },
       columnStyles: {
-        0: { cellWidth: columnWidths[0], halign: 'center' }, // Code
-        1: { cellWidth: columnWidths[1], halign: 'left' }, // Name
-        2: { cellWidth: columnWidths[2], halign: 'center' }, // Present
+        0: { cellWidth: columnWidths[0], halign: 'center' },  // Code
+        1: { cellWidth: columnWidths[1], halign: 'left' },   // Name
+        2: { cellWidth: columnWidths[2], halign: 'center' },  // Present
         3: { cellWidth: columnWidths[3], halign: 'center' }, // Half
-        4: { cellWidth: columnWidths[4], halign: 'center' }, // WO
-        5: { cellWidth: columnWidths[5], halign: 'center' }, // Payable
-        6: { cellWidth: columnWidths[6], halign: 'center' }, // LOP
-        7: { cellWidth: columnWidths[7], halign: 'right' }, // Base
-        8: { cellWidth: columnWidths[8], halign: 'right' }, // Gross
-        9: { cellWidth: columnWidths[9], halign: 'right' }, // Deductions
-        10: { cellWidth: columnWidths[10], halign: 'right' }, // Additions
-        11: { cellWidth: columnWidths[11], halign: 'right', fontStyle: 'bold' }, // Net
+        4: { cellWidth: columnWidths[4], halign: 'center' },  // WO
+        5: { cellWidth: columnWidths[5], halign: 'center' },  // Payable
+        6: { cellWidth: columnWidths[6], halign: 'center' },  // LOP
+        7: { cellWidth: columnWidths[7], halign: 'center' },  // PL
+        8: { cellWidth: columnWidths[8], halign: 'center' },  // CL
+        9: { cellWidth: columnWidths[9], halign: 'right' },  // Base
+        10: { cellWidth: columnWidths[10], halign: 'right' }, // Gross
+        11: { cellWidth: columnWidths[11], halign: 'right' }, // Deductions
+        12: { cellWidth: columnWidths[12], halign: 'right' }, // Additions
+        13: { cellWidth: columnWidths[13], halign: 'right', fontStyle: 'bold' }, // Net
       },
       margin: { left: leftMargin, right: rightMargin },
       tableWidth: 'auto',
@@ -890,6 +904,8 @@ export default function SalarySummary() {
           name: employeeName,
           acc: bankAccNo || '',
           ifsc: ifscCode || '',
+          plApproved: (salary.attendance.paidLeaveDays ?? 0).toFixed(1),
+          clApproved: (salary.attendance.casualLeaveDays ?? 0).toFixed(1),
           baseSalary: salary.baseSalary || 0,
           grossSalary: salary.grossSalary || 0,
           // Deductions
@@ -933,6 +949,8 @@ export default function SalarySummary() {
         { wch: 30 },  // name
         { wch: 20 },  // acc
         { wch: 15 },  // ifsc
+        { wch: 10 },  // plApproved
+        { wch: 10 },  // clApproved
         { wch: 15 },  // baseSalary
         { wch: 15 },  // grossSalary
         { wch: 12 },  // tdsDeduction
@@ -1138,6 +1156,8 @@ export default function SalarySummary() {
   const totalBaseSalary = summaryData?.data?.reduce((sum, s) => sum + s.baseSalary, 0) || 0;
   const totalGrossSalary = summaryData?.data?.reduce((sum, s) => sum + s.grossSalary, 0) || 0;
   const totalDeductions = summaryData?.data?.reduce((sum, s) => sum + s.breakdown.totalDeductions, 0) || 0;
+  const totalPL = summaryData?.data?.reduce((sum, s) => sum + (s.attendance.paidLeaveDays ?? 0), 0) || 0;
+  const totalCL = summaryData?.data?.reduce((sum, s) => sum + (s.attendance.casualLeaveDays ?? 0), 0) || 0;
 
   return (
     <div className="space-y-10">
@@ -1338,6 +1358,12 @@ export default function SalarySummary() {
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] border-b border-white/[0.05]">
                       Name
                     </th>
+                    <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] border-b border-white/[0.05]">
+                      PL
+                    </th>
+                    <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] border-b border-white/[0.05]">
+                      CL
+                    </th>
                     <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] border-b border-white/[0.05]">
                       Base Salary
                     </th>
@@ -1365,6 +1391,12 @@ export default function SalarySummary() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-bold">
                         {(salary as any).employeeName || salary.employeeCode || 'Unknown'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300 text-center">
+                        {(salary.attendance.paidLeaveDays ?? 0).toFixed(1)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300 text-center">
+                        {(salary.attendance.casualLeaveDays ?? 0).toFixed(1)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-white font-semibold text-right">
                         {formatCurrency(salary.baseSalary)}
@@ -1399,6 +1431,12 @@ export default function SalarySummary() {
                         <span className="text-xs font-bold text-slate-400">
                           {summaryData.processed} Employees
                         </span>
+                      </td>
+                      <td className="px-6 py-5 whitespace-nowrap text-sm font-bold text-slate-300 text-center">
+                        {totalPL.toFixed(1)}
+                      </td>
+                      <td className="px-6 py-5 whitespace-nowrap text-sm font-bold text-slate-300 text-center">
+                        {totalCL.toFixed(1)}
                       </td>
                       <td className="px-6 py-5 whitespace-nowrap text-sm font-black text-white text-right">
                         {formatCurrency(totalBaseSalary)}

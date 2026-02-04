@@ -4,7 +4,8 @@ import { NavLink } from 'react-router-dom';
 import { 
   Wallet, 
   CheckSquare, 
-  ChevronDown
+  ChevronDown,
+  Info
 } from 'lucide-react';
 
 interface NavItem {
@@ -19,11 +20,11 @@ const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, o
     // { label: 'Dashboard', path: '/employee/dashboard', icon: <LayoutDashboard size={20} /> },
     // { label: 'Tasks', path: '/employee/tasks', icon: <ClipboardList size={20} /> },
     { label: 'Attendance', path: '/employee/attendance', icon: <CheckSquare size={20} /> },
-    { label: 'Salary', path: '/employee/salary', icon: <Wallet size={20} /> }
+    { label: 'Salary', path: '/employee/salary', icon: <Wallet size={20} /> },
     // { label: 'Leave', path: '/employee/leave', icon: <CalendarDays size={20} /> },
     // { label: 'Document Center', path: '/employee/documents', icon: <BookOpen size={20} /> },
     // { label: 'Helpdesk', path: '/employee/helpdesk', icon: <Info size={20} /> },
-    // { label: 'Profile', path: '/employee/profile', icon: <Info size={20} /> },
+    { label: 'Profile', path: '/employee/profile', icon: <Info size={20} /> }
   ];
 
   const sidebarClasses = `

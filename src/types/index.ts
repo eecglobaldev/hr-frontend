@@ -58,6 +58,9 @@ export interface User {
   designation: string;
   department: string;
   joinDate: string;
+  bankAccNo?: string | null;
+  ifscCode?: string | null;
+  panCardNo?: string | null;
 }
 
 // Attendance Types
@@ -170,6 +173,10 @@ export interface AttendanceInfo {
   sundaysInMonth: number;
   actualDaysWorked: number;
   totalPayableDays: number;
+  /** PL (Privilege Leave) approved days for the month */
+  paidLeaveDays?: number;
+  /** CL (Casual Leave) approved days for the month */
+  casualLeaveDays?: number;
 }
 
 export interface SalaryCalculation {

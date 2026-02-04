@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Menu, LogOut } from 'lucide-react';
 
@@ -39,15 +39,18 @@ const Header: React.FC<{ onMenuClick: () => void }> = ({ onMenuClick }) => {
           
           <div className="h-10 w-px bg-slate-200/50 hidden sm:block"></div>
 
-          <div className="flex items-center pl-4 group cursor-pointer">
+          <Link
+            to="/employee/profile"
+            className="flex items-center pl-4 group cursor-pointer no-underline"
+          >
             <div className="hidden sm:flex flex-col items-end mr-4">
               <span className="text-sm font-black text-slate-900 group-hover:text-indigo-600 transition-colors tracking-tight">{user?.name}</span>
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">{user?.designation}</span>
             </div>
             <div className="h-12 w-12 rounded-[1.2rem] bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-black text-sm shadow-xl shadow-indigo-100 ring-4 ring-white group-hover:scale-105 transition-all">
-              {user?.name.split(' ').map(n => n[0]).join('')}
+              {user?.name?.split(' ').map(n => n[0]).join('')}
             </div>
-          </div>
+          </Link>
 
           <button 
             onClick={logout}
