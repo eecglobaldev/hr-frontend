@@ -1,9 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/TextLayer.css';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import { getSalaryHistory, downloadPayslip, downloadPayslipPdf, getApiBaseUrl } from '@/services/api';
 import { SalaryRecord, SalaryStatus } from '@/types';
-import { Download, FileText, AlertCircle, Eye, X } from 'lucide-react';
+import { Download, FileText, AlertCircle, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react';
+
+// Configure PDF.js worker (required; set in same module as Document/Page usage)
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const SalaryHistory: React.FC = () => {
   const [history, setHistory] = useState<SalaryRecord[]>([]);
@@ -15,6 +21,10 @@ const SalaryHistory: React.FC = () => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [containerWidth, setContainerWidth] = useState<number>(800);
+  const viewerContainerRef = useRef<HTMLDivElement>(null);
 
   // Helper to extract month in YYYY-MM format
   const getMonthFromRecord = (record: SalaryRecord): string => {
@@ -103,6 +113,8 @@ const SalaryHistory: React.FC = () => {
         URL.revokeObjectURL(pdfUrl);
       }
       
+      setPageNumber(1);
+      setNumPages(null);
       setPdfUrl(url);
     } catch (err) {
       console.error('Failed to load payslip:', err);
@@ -180,6 +192,20 @@ const SalaryHistory: React.FC = () => {
     };
   }, [pdfUrl]);
 
+  // Measure viewer container width for responsive PDF scale (works on Android)
+  useEffect(() => {
+    if (!pdfUrl || !viewerContainerRef.current) return;
+    const el = viewerContainerRef.current;
+    const updateWidth = () => {
+      const w = el.offsetWidth || Math.min(window.innerWidth - 32, 800);
+      setContainerWidth(w);
+    };
+    updateWidth();
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pdfUrl]);
+
   const handleCloseViewer = () => {
     setViewingRecord(null);
     if (pdfUrl) {
@@ -187,6 +213,8 @@ const SalaryHistory: React.FC = () => {
       setPdfUrl(null);
     }
     setPdfError(null);
+    setNumPages(null);
+    setPageNumber(1);
   };
 
   const handleDownload = async (record: SalaryRecord) => {
@@ -413,13 +441,66 @@ const SalaryHistory: React.FC = () => {
           )}
 
           {pdfUrl && !loadingPdf && !pdfError && (
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
-              <iframe
-                src={pdfUrl}
-                className="w-full"
-                style={{ height: '800px', border: 'none' }}
-                title={`Salary Report - ${viewingRecord?.month} ${viewingRecord?.year}`}
-              />
+            <div
+              ref={viewerContainerRef}
+              className="border border-slate-200 rounded-2xl overflow-auto bg-slate-50"
+            >
+              <div className="flex justify-center p-4 min-h-[400px]">
+                <Document
+                  file={pdfUrl}
+                  onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                  onLoadError={(e) => setPdfError(e?.message ?? 'Failed to load PDF')}
+                  loading={
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-10 w-10 border-2 border-indigo-500 border-t-transparent" />
+                    </div>
+                  }
+                  error={
+                    <div className="py-8 text-center text-slate-600 font-semibold">
+                      Unable to display the report. Use Download to save the PDF.
+                    </div>
+                  }
+                >
+                  <Page
+                    pageNumber={pageNumber}
+                    width={containerWidth}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    loading={
+                      <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-500 border-t-transparent" />
+                      </div>
+                    }
+                  />
+                </Document>
+              </div>
+              {numPages != null && numPages > 0 && (
+                <div className="flex items-center justify-center gap-4 py-4 border-t border-slate-200 bg-white/80">
+                  <button
+                    type="button"
+                    onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+                    disabled={pageNumber <= 1}
+                    className="inline-flex items-center gap-1 px-4 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-40 disabled:pointer-events-none"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft size={18} />
+                    Previous
+                  </button>
+                  <span className="text-sm font-semibold text-slate-600 tabular-nums">
+                    Page {pageNumber} of {numPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
+                    disabled={pageNumber >= numPages}
+                    className="inline-flex items-center gap-1 px-4 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 rounded-xl disabled:opacity-40 disabled:pointer-events-none"
+                    aria-label="Next page"
+                  >
+                    Next
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </Card>
