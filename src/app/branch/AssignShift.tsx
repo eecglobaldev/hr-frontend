@@ -11,7 +11,7 @@ export default function AssignShift() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Array<{ employeeNo: string; name: string }>>([]);
-  const [shifts, setShifts] = useState<Array<{ shiftName: string; startTime: string; endTime: string }>>([]);
+  const [shifts, setShifts] = useState<Array<{ shiftName: string; startTime: string; endTime: string; timing?: string }>>([]);
   const [form, setForm] = useState({
     employeeCode: '',
     shiftName: '',
@@ -39,6 +39,20 @@ export default function AssignShift() {
     };
     fetch();
   }, []);
+
+  const formatShiftLabel = (s: { shiftName: string; startTime?: unknown; endTime?: unknown; timing?: string }) => {
+    if (s.timing) return s.timing.replace(/\s*–\s*/g, ' - ');
+    const fmt = (t: unknown): string => {
+      if (t == null) return '—';
+      if (typeof t === 'string') return t.slice(0, 5);
+      if (typeof t === 'object' && t !== null && 'getHours' in t) {
+        const d = t as Date;
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }
+      return String(t).slice(0, 5);
+    };
+    return `${fmt(s.startTime)} - ${fmt(s.endTime)}`;
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -130,7 +144,7 @@ export default function AssignShift() {
               <option value="">Select shift</option>
               {shifts.map((s) => (
                 <option key={s.shiftName} value={s.shiftName}>
-                  {s.shiftName}
+                  {formatShiftLabel(s)}
                 </option>
               ))}
             </select>
