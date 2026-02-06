@@ -448,7 +448,7 @@ const Profile: React.FC = () => {
               Documents
             </h3>
             <p className="text-xs text-gray-500 mb-4">
-              Upload Aadhaar, PAN, Passbook or LOA (JPEG, PNG or PDF, max 5 MB). You can only view your own documents.
+              Upload Aadhaar (front & back), PAN, Passbook or LOA (JPEG, PNG or PDF, max 5 MB). You can only view your own documents.
             </p>
             {documentError && (
               <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2">
@@ -470,11 +470,11 @@ const Profile: React.FC = () => {
               onChange={handleFileChange}
             />
             <div className="space-y-4">
-              {['AADHAAR', 'PAN', 'PASSBOOK', 'LOA'].map((docType) => (
+              {(['AADHAAR_FRONT', 'AADHAAR_BACK', 'PAN', 'PASSBOOK', 'LOA'] as const).map((docType) => (
                 <div key={docType} className="flex flex-wrap items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-gray-800">
-                      {docType === 'AADHAAR' ? 'Aadhaar Card' : docType === 'PAN' ? 'PAN Card' : docType === 'PASSBOOK' ? 'PASSBOOK' : 'LOA'}
+                      {docType === 'AADHAAR_FRONT' ? 'Aadhaar (Front)' : docType === 'AADHAAR_BACK' ? 'Aadhaar (Back)' : docType === 'PAN' ? 'PAN Card' : docType === 'PASSBOOK' ? 'PASSBOOK' : 'LOA'}
                     </span>
                     {hasDocument(docType) && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">

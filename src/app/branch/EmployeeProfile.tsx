@@ -709,7 +709,7 @@ export default function EmployeeProfile() {
             Documents
           </h3>
           <p className="text-xs text-slate-500 mb-4">
-            Upload Aadhaar, PAN, Passbook or LOA (JPEG, PNG or PDF, max 5 MB). Branch managers can upload and view documents for employees in their branch.
+            Upload Aadhaar (front & back), PAN, Passbook or LOA (JPEG, PNG or PDF, max 5 MB). Branch managers can upload and view documents for employees in their branch.
           </p>
           {documentError && (
             <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2">
@@ -731,11 +731,11 @@ export default function EmployeeProfile() {
             onChange={handleFileChange}
           />
           <div className="space-y-4">
-            {['AADHAAR', 'PAN', 'PASSBOOK', 'LOA'].map((docType) => (
+            {(['AADHAAR_FRONT', 'AADHAAR_BACK', 'PAN', 'PASSBOOK', 'LOA'] as const).map((docType) => (
               <div key={docType} className="flex flex-wrap items-center justify-between gap-3 py-2 border-b border-slate-100 last:border-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-slate-800">
-                    {docType === 'AADHAAR' ? 'Aadhaar Card' : docType === 'PAN' ? 'PAN Card' : docType === 'PASSBOOK' ? 'Passbook' : 'LOA'}
+                    {docType === 'AADHAAR_FRONT' ? 'Aadhaar (Front)' : docType === 'AADHAAR_BACK' ? 'Aadhaar (Back)' : docType === 'PAN' ? 'PAN Card' : docType === 'PASSBOOK' ? 'Passbook' : 'LOA'}
                   </span>
                   {hasDocument(docType) && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">

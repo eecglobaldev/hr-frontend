@@ -67,6 +67,11 @@ apiClient.interceptors.request.use(
     const currentApiUrl = getApiBaseUrl();
     config.baseURL = currentApiUrl;
     
+    // Let the browser set Content-Type (with boundary) for FormData; otherwise multer won't receive the file
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+    
     // Log API URL for debugging (only in development)
     if (import.meta.env.DEV) {
       console.log('[API] Making request to:', currentApiUrl + (config.url || ''));
@@ -205,9 +210,6 @@ const employeeApi = {
     formData.append('documentType', documentType);
     formData.append('file', file);
     return apiClient.post<ApiResponse<{ documentType: string; fileSize: number }>>('/employee/documents/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       maxContentLength: 6 * 1024 * 1024,
       maxBodyLength: 6 * 1024 * 1024,
     });
@@ -395,9 +397,7 @@ const branchApi = {
     const formData = new FormData();
     formData.append('documentType', documentType);
     formData.append('file', file);
-    return apiClient.post<ApiResponse<{ documentType: string; fileSize: number }>>(`/branch/employees/${employeeId}/documents/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return apiClient.post<ApiResponse<{ documentType: string; fileSize: number }>>(`/branch/employees/${employeeId}/documents/upload`, formData);
   },
   getSalaryHold: (employeeId: string, month: string) =>
     apiClient.get<ApiResponse<any> & { isHeld?: boolean }>(`/branch/employees/${employeeId}/salary-hold?month=${month}`),
