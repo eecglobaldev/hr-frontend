@@ -6,6 +6,7 @@ import {
   Wallet,
   FileText,
   CalendarDays,
+  Building2,
   X
 } from 'lucide-react';
 
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Salary', to: '/admin/salary', icon: Wallet },
   { name: 'Salary Summary', to: '/admin/salary/summary', icon: FileText },
   { name: 'Holidays', to: '/admin/holidays', icon: CalendarDays },
+  { name: 'Branch Managers', to: '/admin/branch-managers', icon: Building2 },
 ];
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {

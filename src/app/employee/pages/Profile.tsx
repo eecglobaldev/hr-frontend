@@ -3,7 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
-import { Phone, Building, MapPin, Calendar, AlertCircle, CheckCircle, Briefcase, CreditCard, User, Save, Pencil, X } from 'lucide-react';
+import { Phone, Building, MapPin, Calendar, AlertCircle, CheckCircle, Briefcase, CreditCard, User, Save, Pencil, X, FileUp, Eye, FileCheck } from 'lucide-react';
 import { api, getEmployeeProfile, changePassword, updateEmployeeProfile } from '@/services/api';
 import { formatCurrency, formatDate } from '@/utils/format';
 
@@ -56,6 +56,14 @@ const Profile: React.FC = () => {
   const [bankDetailsError, setBankDetailsError] = useState<string | null>(null);
   const [bankDetailsSuccess, setBankDetailsSuccess] = useState(false);
   const [editingField, setEditingField] = useState<'bankAccNo' | 'ifscCode' | 'panCardNo' | null>(null);
+
+  const [documentList, setDocumentList] = useState<Array<{ documentType: string; uploadedAt: string }>>([]);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const [documentSuccess, setDocumentSuccess] = useState<string | null>(null);
+  const [documentUploading, setDocumentUploading] = useState<string | null>(null);
+  const [documentViewing, setDocumentViewing] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [pendingUploadType, setPendingUploadType] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchShifts = async () => {
@@ -144,6 +152,67 @@ const Profile: React.FC = () => {
     if (field === 'panCardNo') setPanCardNo(user?.panCardNo ?? '');
     setEditingField(null);
     setBankDetailsError(null);
+  };
+
+  const fetchDocumentList = async () => {
+    try {
+      const response = await api.employee.listDocuments() as unknown as { data?: { data?: Array<{ documentType: string; uploadedAt: string }> } };
+      const list = response?.data?.data ?? [];
+      setDocumentList(list);
+    } catch {
+      setDocumentList([]);
+    }
+  };
+
+  useEffect(() => {
+    if (authUser) fetchDocumentList();
+  }, [authUser]);
+
+  const hasDocument = (type: string) => documentList.some((d) => d.documentType === type);
+
+  const handleUploadClick = (type: string) => {
+    setDocumentError(null);
+    setDocumentSuccess(null);
+    setPendingUploadType(type);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const type = pendingUploadType;
+    setPendingUploadType(null);
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !type) return;
+    setDocumentError(null);
+    setDocumentSuccess(null);
+    setDocumentUploading(type);
+    try {
+      await api.employee.uploadDocument(type, file);
+      setDocumentSuccess(`${type} uploaded successfully.`);
+      setTimeout(() => setDocumentSuccess(null), 4000);
+      await fetchDocumentList();
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Upload failed';
+      setDocumentError(msg);
+    } finally {
+      setDocumentUploading(null);
+    }
+  };
+
+  const handleViewDocument = async (type: string) => {
+    setDocumentError(null);
+    setDocumentViewing(type);
+    try {
+      const res = await api.employee.getDocumentViewUrl(type);
+      const url = res.data?.data?.url;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      else setDocumentError('Could not open document.');
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to open document';
+      setDocumentError(msg);
+    } finally {
+      setDocumentViewing(null);
+    }
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -373,6 +442,83 @@ const Profile: React.FC = () => {
             </div>
           </Card>
 
+          <Card>
+            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <FileUp size={18} className="text-indigo-500" />
+              Documents
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Upload Aadhaar, PAN, Passbook or LOA (JPEG, PNG or PDF, max 5 MB). You can only view your own documents.
+            </p>
+            {documentError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2">
+                <AlertCircle size={18} className="text-rose-600 shrink-0" />
+                <p className="text-sm text-rose-700 font-semibold">{documentError}</p>
+              </div>
+            )}
+            {documentSuccess && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
+                <CheckCircle size={18} className="text-green-600 shrink-0" />
+                <p className="text-sm text-green-700 font-semibold">{documentSuccess}</p>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <div className="space-y-4">
+              {['AADHAAR', 'PAN', 'PASSBOOK', 'LOA'].map((docType) => (
+                <div key={docType} className="flex flex-wrap items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-800">
+                      {docType === 'AADHAAR' ? 'Aadhaar Card' : docType === 'PAN' ? 'PAN Card' : docType === 'PASSBOOK' ? 'PASSBOOK' : 'LOA'}
+                    </span>
+                    {hasDocument(docType) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                        <FileCheck size={12} /> Uploaded
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={!!documentUploading}
+                      onClick={() => handleUploadClick(docType)}
+                      className="flex items-center gap-1.5"
+                    >
+                      {documentUploading === docType ? (
+                        <span className="h-3.5 w-3.5 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <FileUp size={14} />
+                      )}
+                      Upload
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={!!documentViewing || !hasDocument(docType)}
+                      onClick={() => handleViewDocument(docType)}
+                      className="flex items-center gap-1.5"
+                    >
+                      {documentViewing === docType ? (
+                        <span className="h-3.5 w-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Eye size={14} />
+                      )}
+                      View
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
           {/* <Card titleClassName="text-blue-600" title="Account Security">
             <div className="flex items-center space-x-4 mb-8 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <div className="p-3 bg-white rounded-lg shadow-sm text-blue-600">
@@ -441,7 +587,7 @@ const Profile: React.FC = () => {
             </form>
           </Card> */}
 
-          <div className="p-6 bg-amber-50/80 border border-amber-200 rounded-xl">
+          {/* <div className="p-6 bg-amber-50/80 border border-amber-200 rounded-xl">
              <h4 className="font-bold text-yellow-800 flex items-center mb-2">
                 <AlertCircle size={18} className="mr-2" />
                 Profile Editing
@@ -449,7 +595,7 @@ const Profile: React.FC = () => {
              <p className="text-sm text-yellow-700">
                 To update your basic information (Name, Department, Email, etc.), please contact your HR representative. These fields are managed by the administration.
              </p>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

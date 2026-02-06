@@ -115,14 +115,20 @@ apiClient.interceptors.response.use(
     }
     
     if (error.response?.status === 401) {
-      // Only redirect to login if we're not on an admin route
-      // Admin routes use API key authentication, not JWT tokens
       const currentPath = window.location.pathname;
-      if (!currentPath.startsWith('/admin')) {
+      if (currentPath.startsWith('/branch')) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('employeeCode');
         localStorage.removeItem('role');
+        localStorage.removeItem('branchId');
+        window.location.href = '/branch/login';
+      } else if (!currentPath.startsWith('/admin')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('employeeCode');
+        localStorage.removeItem('role');
+        localStorage.removeItem('branchId');
         window.location.href = '/login';
       }
     }
@@ -192,6 +198,24 @@ const employeeApi = {
   
   updateProfile: (updates: Partial<User>) =>
     apiClient.patch<ApiResponse<User>>('/employee/me', updates),
+
+  // Documents (Aadhaar, PAN, Passbook) - upload & signed URL view
+  uploadDocument: (documentType: string, file: File) => {
+    const formData = new FormData();
+    formData.append('documentType', documentType);
+    formData.append('file', file);
+    return apiClient.post<ApiResponse<{ documentType: string; fileSize: number }>>('/employee/documents/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      maxContentLength: 6 * 1024 * 1024,
+      maxBodyLength: 6 * 1024 * 1024,
+    });
+  },
+  getDocumentViewUrl: (type: string) =>
+    apiClient.get<ApiResponse<{ url: string; expiresIn: number }>>(`/employee/documents/${type}`),
+  listDocuments: () =>
+    apiClient.get<ApiResponse<{ documentType: string; uploadedAt: string; fileSize: number | null; mimeType: string | null }[]>>('/employee/documents'),
   
   // Salary
   getCurrentSalary: (month?: string) => {
@@ -347,6 +371,42 @@ const employeeApi = {
     apiClient.get<ApiResponse<{ date: string; logCount: number; logs: Array<{ time: string }> }>>(`/employee/attendance/logs/${date}`),
 };
 
+// Branch Manager APIs (JWT, BRANCH_MANAGER role)
+const branchApi = {
+  login: (username: string, password: string) =>
+    apiClient.post<ApiResponse<{ token: string; username: string; role: string; branchId: string }>>('/auth/branch/login', { username, password }),
+  getEmployees: () =>
+    apiClient.get<ApiResponse<Array<{ employeeNo: string; name: string; department: string; designation: string; location: string; status: string; joinDate: string | null }>>>('/branch/employees'),
+  getEmployee: (id: string) =>
+    apiClient.get<ApiResponse<any>>(`/branch/employees/${id}`),
+  addEmployee: (data: any) =>
+    apiClient.post<ApiResponse<any>>('/branch/employees', data),
+  updateEmployee: (id: string, data: any) =>
+    apiClient.put<ApiResponse<any>>(`/branch/employees/${id}`, data),
+  getShifts: () =>
+    apiClient.get<ApiResponse<Array<{ shiftName: string; startTime: any; endTime: any; isSplitShift: boolean; timing?: string }>>>('/branch/shifts'),
+  assignShift: (payload: { employeeCode: string; shiftName: string; fromDate: string; toDate: string }) =>
+    apiClient.post<ApiResponse<any>>('/branch/assign-shift', payload),
+  listEmployeeDocuments: (employeeId: string) =>
+    apiClient.get<ApiResponse<Array<{ documentType: string; uploadedAt: string; fileSize?: number | null; mimeType?: string | null }>>>(`/branch/employees/${employeeId}/documents`),
+  getEmployeeDocumentViewUrl: (employeeId: string, type: string) =>
+    apiClient.get<ApiResponse<{ url: string; expiresIn: number }>>(`/branch/employees/${employeeId}/documents/${type}`),
+  uploadEmployeeDocument: (employeeId: string, documentType: string, file: File) => {
+    const formData = new FormData();
+    formData.append('documentType', documentType);
+    formData.append('file', file);
+    return apiClient.post<ApiResponse<{ documentType: string; fileSize: number }>>(`/branch/employees/${employeeId}/documents/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  getSalaryHold: (employeeId: string, month: string) =>
+    apiClient.get<ApiResponse<any> & { isHeld?: boolean }>(`/branch/employees/${employeeId}/salary-hold?month=${month}`),
+  createSalaryHold: (employeeId: string, payload: { reason?: string; month?: string }) =>
+    apiClient.post<ApiResponse<any>>(`/branch/employees/${employeeId}/salary-hold`, payload),
+  releaseSalaryHold: (employeeId: string, payload?: { month?: string }) =>
+    apiClient.post<ApiResponse<any>>(`/branch/employees/${employeeId}/salary-hold/release`, payload || {}),
+};
+
 // Admin APIs (from admin-dashboard)
 export const api = {
   // Admin APIs
@@ -354,6 +414,9 @@ export const api = {
   
   // Employee Self-Service APIs
   employee: employeeApi,
+  
+  // Branch Manager APIs
+  branch: branchApi,
   
   // Admin Employee APIs
   employees: {
@@ -367,6 +430,13 @@ export const api = {
       apiClient.get<ApiResponse<Employee[]>>(`/employees/department/${department}`),
     reload: () =>
       apiClient.post<ApiResponse<void>>('/employees/reload'),
+  },
+
+  branchManagers: {
+    getAll: () =>
+      apiClient.get<ApiResponse<Array<{ id: number; username: string; branch_location: string; created_at: string | null }>>>('/branch-managers'),
+    create: (data: { username: string; password: string; branch_location: string }) =>
+      apiClient.post<ApiResponse<{ id: number; username: string; branch_location: string; created_at: string | null }>>('/branch-managers', data),
   },
 
   employeeDetails: {
@@ -456,7 +526,10 @@ export const api = {
       if (month) params.append('month', month);
       if (chunkSize) params.append('chunkSize', chunkSize.toString());
       const queryString = params.toString();
-      return apiClient.get<ApiResponse<any>>(`/salary/summary${queryString ? `?${queryString}` : ''}`);
+      // Summary processes employees with limited concurrency; 200+ employees can take 8–10 min
+      return apiClient.get<ApiResponse<any>>(`/salary/summary${queryString ? `?${queryString}` : ''}`, {
+        timeout: 600000, // 10 minutes
+      });
     },
     getRecentAttendance: (userId: number) =>
       apiClient.get<ApiResponse<any>>(`/salary/${userId}/recent-attendance`),

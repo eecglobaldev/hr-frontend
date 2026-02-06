@@ -12,13 +12,15 @@ interface AuthContextType {
   isAuthenticated: boolean;
   token: string | null;
   employeeCode: string | null;
-  role: string | null; // 'admin' | 'employee'
+  role: string | null; // 'admin' | 'employee' | 'branch_manager'
+  branchId: string | null; // For BRANCH_MANAGER: branch location filter
   checkAuthMethod: (employeeCode: string) => Promise<{ hasPassword: boolean; requiresOTP: boolean; isLocked: boolean; lockedUntil: string | null; attemptsRemaining: number }>;
   verifyOTPAndLogin: (employeeCode: string, otp: string) => Promise<{ success: boolean; role?: string }>;
   loginWithPassword: (employeeCode: string, password: string) => Promise<{ success: boolean; error?: string; attemptsRemaining?: number; lockedUntil?: string | null }>;
   setPasswordAfterOTP: (employeeCode: string, otp: string, password: string) => Promise<{ success: boolean; error?: string; role?: string }>;
   resetPasswordAfterOTP: (employeeCode: string, otp: string, password: string) => Promise<{ success: boolean; error?: string; role?: string }>;
   adminLogin: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  branchLogin: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -30,6 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [employeeCode, setEmployeeCode] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [branchId, setBranchId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Check for existing session on mount
@@ -39,11 +42,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const storedEmployeeCode = localStorage.getItem('employeeCode');
       const storedRole = localStorage.getItem('role');
       const storedUser = localStorage.getItem('user');
+      const storedBranchId = localStorage.getItem('branchId');
       
       if (storedToken && storedEmployeeCode) {
         setToken(storedToken);
         setEmployeeCode(storedEmployeeCode);
         setRole(storedRole);
+        setBranchId(storedBranchId);
         
         if (storedUser) {
           try {
@@ -68,9 +73,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem('employeeCode');
             localStorage.removeItem('role');
             localStorage.removeItem('user');
+            localStorage.removeItem('branchId');
             setToken(null);
             setEmployeeCode(null);
             setRole(null);
+            setBranchId(null);
             setUser(null);
           }
         }
@@ -381,18 +388,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const branchLogin = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await api.branch.login(username, password);
+      const responseData = response.data?.data;
+      if (responseData && response.data?.success) {
+        const { token: t, username: u, role: userRole, branchId: bid } = responseData;
+        if (!t || !u || !userRole || bid === undefined) {
+          return { success: false, error: 'Invalid response from server' };
+        }
+        const normalizedRole = userRole.toLowerCase();
+        localStorage.setItem('token', t);
+        localStorage.setItem('employeeCode', u);
+        localStorage.setItem('role', normalizedRole);
+        localStorage.setItem('branchId', bid);
+        setToken(t);
+        setEmployeeCode(u);
+        setRole(normalizedRole);
+        setBranchId(bid);
+        const branchUser: User = {
+          id: u,
+          employeeCode: u,
+          name: u,
+          email: '',
+          phone: '',
+          department: 'Branch',
+          designation: 'Branch Manager',
+          joinDate: new Date().toISOString(),
+        };
+        setUser(branchUser);
+        localStorage.setItem('user', JSON.stringify(branchUser));
+        return { success: true };
+      }
+      return { success: false, error: 'Invalid credentials' };
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.error || error?.message || 'Login failed.';
+      return { success: false, error: errorMessage };
+    }
+  };
+
   const logout = () => {
+    const wasBranch = role === 'branch_manager';
     localStorage.removeItem('token');
     localStorage.removeItem('employeeCode');
     localStorage.removeItem('role');
     localStorage.removeItem('user');
+    localStorage.removeItem('branchId');
     
     setToken(null);
     setEmployeeCode(null);
     setRole(null);
+    setBranchId(null);
     setUser(null);
     
-    window.location.href = '/login';
+    window.location.href = wasBranch ? '/branch/login' : '/login';
   };
 
   return (
@@ -403,12 +452,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         employeeCode,
         role,
+        branchId,
         checkAuthMethod,
         verifyOTPAndLogin,
         loginWithPassword,
         setPasswordAfterOTP,
         resetPasswordAfterOTP,
         adminLogin,
+        branchLogin,
         logout, 
         isLoading 
       }}

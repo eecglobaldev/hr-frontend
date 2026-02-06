@@ -7,7 +7,7 @@ const NotFound: React.FC = () => {
   const { role } = useAuth();
   const navigate = useNavigate();
   
-  const dashboardPath = role === 'admin' ? '/admin/dashboard' : '/employee/dashboard';
+  const dashboardPath = role === 'admin' ? '/admin/dashboard' : role === 'branch_manager' ? '/branch/dashboard' : '/employee/dashboard';
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
